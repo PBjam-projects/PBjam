@@ -301,8 +301,9 @@ class psd():
         if width is None:
             width = 100*df
 
-        freq_cen = 0.5*self.Nyquist
-
+        # freq_cen = 0.5*self.Nyquist
+        freq_cen = max([0.5*self.Nyquist, width + df])
+        
         Nfreq = int(oversampling*width/df)
 
         freq = freq_cen + (df/oversampling) * np.arange(-Nfreq, Nfreq, 1)
