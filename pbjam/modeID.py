@@ -183,7 +183,7 @@ class modeID(plotting, ):
             raise ValueError(f'Model {model} is invalid. Please use either MS, SG or RGB.')
 
     def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, **kwargs):
-        '''
+        """
         Run an l = 1 model of the residual power spectum.
 
         Keyword arguments not listed below will be passed to self.makel1model,
@@ -201,7 +201,7 @@ class modeID(plotting, ):
             Additional keyword arguments for the sampler. Default is an empty dictionary.
         logl_kwargs : dict, optional
             Additional keyword arguments for the log-likelihood function. Default is an empty dictionary.
-        '''
+        """
 
         if not hasattr(self, 'l1model'):
             self.makel1model(**kwargs)
