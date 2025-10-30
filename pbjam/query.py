@@ -1,6 +1,12 @@
 ## Convenience functions for looking up bp_rp (and teff),
 ## rescued from pbjam1
 
+"""
+The query module contains a set of convenience functions to assist with
+automatically looking up values of the teff and bp_rp parameters from
+either the TIC or from a SIMBAD-resolvable star name.
+"""
+
 import re
 import time
 from astropy import units
