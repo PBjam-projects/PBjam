@@ -1,16 +1,18 @@
 ## Convenience functions for looking up bp_rp (and teff),
 ## rescued from pbjam1
 
+import re
 import time
+from astropy import units
 from astroquery.mast import ObservationsClass as AsqMastObsCl
 from astroquery.mast import Catalogs
 from astroquery.simbad import Simbad
 from astroquery.gaia import Gaia
 
 def _querySimbad(ID):
-    """ Query simbad for Gaia DR2 source ID.
+    """ Query simbad for Gaia DR3 source ID.
     
-    Looks up the target ID on Simbad to check if it has a Gaia DR2 ID.
+    Looks up the target ID on Simbad to check if it has a Gaia DR3 ID.
     
     The input ID can be any commonly used identifier, such as a Bayer 
     designation, HD number or KIC.
@@ -28,7 +30,7 @@ def _querySimbad(ID):
     Returns
     -------
     gaiaID : str
-        Gaia DR2 source ID. Returns None if no Gaia ID is found.   
+        Gaia DR3 source ID. Returns None if no Gaia ID is found.   
     """
     
     print('Querying Simbad for Gaia ID')
@@ -40,7 +42,9 @@ def _querySimbad(ID):
         return None
     
     for line in job['id']: # as of astroquery >= 0.4.8, this is lowercase
-        if 'Gaia DR2' in line:
+        if 'Gaia DR3' in line:
+            return line.replace('Gaia DR3 ', '')
+        elif 'Gaia DR2' in line:
             return line.replace('Gaia DR2 ', '')
     return None
 
@@ -186,6 +190,7 @@ def _format_name(name):
     
     # Add naming exceptions here
     variants = {'KIC': ['kic', 'kplr', 'KIC'],
+                'Gaia DR3': ['gaia dr3', 'gdr3', 'dr3', 'Gaia DR3'],
                 'Gaia DR2': ['gaia dr2', 'gdr2', 'dr2', 'Gaia DR2'],
                 'Gaia DR1': ['gaia dr1', 'gdr1', 'dr1', 'Gaia DR1'], 
                 'EPIC': ['epic', 'ktwo', 'EPIC'],
@@ -208,7 +213,7 @@ def get_spec(ID):
     """ Search online for bp_rp and Teff values based on ID.
        
     First a check is made to see if the target is a TIC number, in which case 
-    the TIC will be queried, since this is already cross-matched with Gaia DR2. 
+    the TIC will be queried, since this is already cross-matched with Gaia DR3. 
     
     If it is not a TIC number, Simbad is queries to identify a possible Gaia 
     source ID. 
@@ -235,7 +240,7 @@ def get_spec(ID):
     ID = _format_name(ID)
     
     if 'TIC' in ID:
-        bp_rp = _queryTIC(ID)          
+        res = _queryTIC(ID)          
 
     else:
         try:
