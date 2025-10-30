@@ -326,12 +326,11 @@ class star(plotting):
             assert isinstance(val, Iterable), 'Entries in obs must be of the form (value, error)'
             assert len(val) == 2, 'Entries in obs must be of the form (value, error)'
             
-    def runModeID(self, modeID_kwargs={}):
+    def makeModeID(self, **modeID_kwargs):
         """ Run the mode identification process using the provided or default keyword arguments.
 
-        This method creates a `modeID` instance and executes it with the arguments provided in 
-        `modeID_kwargs` or from the current object's attributes. If `priorpath` is not specified, 
-        it fetches the path to the prior file.
+        This method creates a `modeID` instance ONLY. This function is for advanced usage only;
+        it is automatically called when running star.runModeID().
 
         Parameters
         ----------
@@ -356,6 +355,26 @@ class star(plotting):
         
         self.modeID = modeID(**_modeID_kwargs)
 
+    def runModeID(self, modeID_kwargs={}):
+        """ Run the mode identification process using the provided or default keyword arguments.
+
+        This method creates a `modeID` instance and executes it with the arguments provided in 
+        `modeID_kwargs` or from the current object's attributes. If `priorpath` is not specified, 
+        it fetches the path to the prior file.
+
+        Parameters
+        ----------
+        modeID_kwargs : dict, optional
+            Dictionary of additional keyword arguments to update or override the current object's attributes 
+            when initializing the `modeID` instance. Default is an empty dictionary.
+
+        Raises
+        ------
+        KeyError
+            If required parameters for mode identification are missing.
+        """
+        if not hasattr(self, "modeID"):
+            self.makeModeID(**modeID_kwargs)
         self.modeID(**_modeID_kwargs)
         
     def runPeakbag(self, peakbag_kwargs={}):
