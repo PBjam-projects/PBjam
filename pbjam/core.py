@@ -345,7 +345,6 @@ class star(plotting):
         """
             
         _modeID_kwargs = copy.deepcopy(self.__dict__)
-        
         _modeID_kwargs.update(modeID_kwargs)
          
         if not 'priorpath' in _modeID_kwargs:
@@ -354,6 +353,7 @@ class star(plotting):
             _modeID_kwargs['priorpath'] = self.priorpath
         
         self.modeID = modeID(**_modeID_kwargs)
+        self._modeID_kwargs = _modeID_kwargs
 
     def runModeID(self, modeID_kwargs={}):
         """ Run the mode identification process using the provided or default keyword arguments.
@@ -375,7 +375,7 @@ class star(plotting):
         """
         if not hasattr(self, "modeID"):
             self.makeModeID(**modeID_kwargs)
-        self.modeID(**_modeID_kwargs)
+        self.modeID(**self._modeID_kwargs)
         
     def runPeakbag(self, peakbag_kwargs={}):
         """ Run the peakbagging process using the provided or default keyword arguments.
