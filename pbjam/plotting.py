@@ -354,7 +354,7 @@ def _ModeIDClassPriorEchelle(self, Nsamples, scale, colors, dnu=None, numax=None
     if numax is None:
         numax = self.obs['numax'][0]
 
-    fig, ax = _baseEchelle(self.f, self.s, self.N_p, numax, dnu, scale)
+    fig, ax = _baseEchelle(self.f, self.s, self.N_p, numax, dnu, scale, **kwargs)
 
     if hasattr(self, 'l20model'):
  
@@ -560,7 +560,7 @@ def _PeakbagClassPriorEchelle(self, scale, colors, dnu=None, numax=None, **kwarg
     if numax is None:
         numax = np.median(self.freq)
    
-    fig, ax = _baseEchelle(self.f, self.s, self.N_p, numax, dnu, scale)
+    fig, ax = _baseEchelle(self.f, self.s, self.N_p, numax, dnu, scale, **kwargs)
 
     maxL = 0
 
@@ -602,7 +602,7 @@ def _PeakbagClassPostEchelle(self, Nsamples, scale, colors, dnu=None, numax=None
 
     #offset = (self.result['summary']['eps_p'][0]) - 0.25
 
-    fig, ax = _baseEchelle(self.f, self.s, self.N_p, numax, dnu, scale)
+    fig, ax = _baseEchelle(self.f, self.s, self.N_p, numax, dnu, scale, **kwargs)
     
     maxL = 0
 
