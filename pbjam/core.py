@@ -312,11 +312,12 @@ class star(plotting):
         Dictionary of additional keyword arguments for either modeID or peakbag.    
     """
 
-    def __init__(self, name, f, s, obs, outpath=None, **kwargs):
+    def __init__(self, name, f, s, obs, outpath=None, mask=None, **kwargs):
 
         # sanitize inputs
 
-        mask = f > 0
+        if mask is None:
+            mask = f > 0
         f = f[mask]
         s = s[mask]
                 
