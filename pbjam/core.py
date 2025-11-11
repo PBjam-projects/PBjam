@@ -313,8 +313,14 @@ class star(plotting):
     """
 
     def __init__(self, name, f, s, obs, outpath=None, **kwargs):
+
+        # sanitize inputs
+
+        mask = f > 0
+        f = f[mask]
+        s = s[mask]
                 
-        self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self', 'mask'])
         
         self.__dict__.update(kwargs)
         
