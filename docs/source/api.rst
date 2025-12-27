@@ -22,7 +22,7 @@ Modules in PBjam
    peakbagging
    plotting
    samplers
-   
+   query
    
    
 

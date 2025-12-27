@@ -65,7 +65,7 @@ class modeID(plotting, ):
         if self.priorPath is None:
             self.priorPath = IO._getPriorPath()
  
-    def runl20model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, PCAsamples=50, PCAdims=6, **kwargs):
+    def makel20model(self, PCAsamples=50, PCAdims=6, **kwargs):
         """
         Runs the l20 model on the selected spectrum.
 
@@ -91,9 +91,7 @@ class modeID(plotting, ):
         """
 
         f = self.f[self.sel]
-
         s = self.s[self.sel]
-
         self.l20model = Asyl20model(f, s, 
                                     self.obs, 
                                     self.addPriors, 
@@ -101,6 +99,35 @@ class modeID(plotting, ):
                                     PCAsamples, 
                                     PCAdims,
                                     priorPath=self.priorPath)
+    
+
+    def runl20model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, PCAsamples=50, PCAdims=6, **kwargs):
+        """
+        Runs the l20 model on the selected spectrum.
+
+        Parameters
+        ----------
+        progress : bool, optional
+            Whether to show progress during the model run. Default is True.
+        dynamic : bool, optional
+            Whether to use dynamic nested sampling. Default is False (static nested sampling).
+        minSamples : int, optional
+            The minimum number of samples to generate. Default is 5000.
+        logl_kwargs : dict, optional
+            Additional keyword arguments for the log-likelihood function. Default is an empty dictionary.
+        PCAsamples : int, optional
+            Number of samples for PCA. Default is 50.
+        PCAdims : int, optional
+            Number of dimensions for PCA. Default is 6.
+
+        Returns
+        -------
+        result : dict
+            Parsed results from the l20 model.
+        """
+
+        if not hasattr(self, 'l20model'):
+            self.makel20model(PCAsamples=PCAsamples, PCAdims=PCAdims)
         
         self.l20Samples = self.l20model.runSampler(progress=progress,
                                                    dynamic=dynamic,
@@ -116,24 +143,14 @@ class modeID(plotting, ):
  
         return self.l20result
 
-    def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, model='auto', PCAsamples=500, PCAdims=7, **kwargs):
+    def makel1model(self, model='auto', PCAsamples=500, PCAdims=7, **kwargs):
         """
-        Runs the l1 model on the selected spectrum.
+        Construct a model for the l = 1 residual power spectrum.
 
         Should follow the l20 model run.
 
         Parameters
         ----------
-        progress : bool, optional
-            Whether to show progress during the model run. Default is True.
-        dynamic : bool, optional
-            Whether to use dynamic nested sampling. Default is False (static nested sampling).
-        minSamples : int, optional
-            The minimum number of samples to generate. Default is 5000.
-        sampler_kwargs : dict, optional
-            Additional keyword arguments for the sampler. Default is an empty dictionary.
-        logl_kwargs : dict, optional
-            Additional keyword arguments for the log-likelihood function. Default is an empty dictionary.
         model : str
             Choice of which model to use for estimating the l=1 mode locations. Choices are MS, SG, RGB models.
         PCAsamples : int, optional
@@ -191,6 +208,30 @@ class modeID(plotting, ):
                                       modelChoice='simple')
         else:
             raise ValueError(f'Model {model} is invalid. Please use either MS, SG or RGB.')
+
+    def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, **kwargs):
+        """
+        Run an l = 1 model of the residual power spectum.
+
+        Keyword arguments not listed below will be passed to self.makel1model,
+        in the even that self.l1model is not yet defined.
+
+        Parameters
+        ----------
+        progress : bool, optional
+            Whether to show progress during the model run. Default is True.
+        dynamic : bool, optional
+            Whether to use dynamic nested sampling. Default is False (static nested sampling).
+        minSamples : int, optional
+            The minimum number of samples to generate. Default is 5000.
+        sampler_kwargs : dict, optional
+            Additional keyword arguments for the sampler. Default is an empty dictionary.
+        logl_kwargs : dict, optional
+            Additional keyword arguments for the log-likelihood function. Default is an empty dictionary.
+        """
+
+        if not hasattr(self, 'l1model'):
+            self.makel1model(**kwargs)
          
         self.l1Samples  = self.l1model.runSampler(progress=progress,
                                                   dynamic=dynamic,

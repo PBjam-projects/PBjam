@@ -87,6 +87,12 @@ class peakbag(plotting):
         # Assign some default parameters if none are given.
         self._checkDefaults()
 
+        # explicitly make copies to avoid overwriting values in e.g. modeID.results
+        self.width = np.copy(self.width)
+        self.height = np.copy(self.height)
+        self.freq = np.copy(self.freq)
+        self.zeta = np.copy(self.zeta)
+
         self.width[0, :] = self.width[0, :] / (1-self.zeta)
  
         # If is not the SNR spectrum, remove the packground first and turn the input heights into SNR.

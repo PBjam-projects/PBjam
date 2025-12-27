@@ -312,9 +312,16 @@ class star(plotting):
         Dictionary of additional keyword arguments for either modeID or peakbag.    
     """
 
-    def __init__(self, name, f, s, obs, outpath=None, **kwargs):
+    def __init__(self, name, f, s, obs, outpath=None, mask=None, **kwargs):
+
+        # sanitize inputs
+
+        if mask is None:
+            mask = f > 0
+        f = f[mask]
+        s = s[mask]
                 
-        self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self', 'mask'])
         
         self.__dict__.update(kwargs)
         
@@ -326,6 +333,35 @@ class star(plotting):
             assert isinstance(val, Iterable), 'Entries in obs must be of the form (value, error)'
             assert len(val) == 2, 'Entries in obs must be of the form (value, error)'
             
+    def makeModeID(self, **modeID_kwargs):
+        """ Run the mode identification process using the provided or default keyword arguments.
+
+        This method creates a `modeID` instance ONLY. This function is for advanced usage only;
+        it is automatically called when running star.runModeID().
+
+        Parameters
+        ----------
+        modeID_kwargs : dict, optional
+            Dictionary of additional keyword arguments to update or override the current object's attributes 
+            when initializing the `modeID` instance. Default is an empty dictionary.
+
+        Raises
+        ------
+        KeyError
+            If required parameters for mode identification are missing.
+        """
+            
+        _modeID_kwargs = copy.deepcopy(self.__dict__)
+        _modeID_kwargs.update(modeID_kwargs)
+         
+        if not 'priorpath' in _modeID_kwargs:
+            self.priorpath = IO._getPriorPath()
+            
+            _modeID_kwargs['priorpath'] = self.priorpath
+        
+        self.modeID = modeID(**_modeID_kwargs)
+        self._modeID_kwargs = _modeID_kwargs
+
     def runModeID(self, modeID_kwargs={}):
         """ Run the mode identification process using the provided or default keyword arguments.
 
@@ -344,19 +380,9 @@ class star(plotting):
         KeyError
             If required parameters for mode identification are missing.
         """
-            
-        _modeID_kwargs = copy.deepcopy(self.__dict__)
-        
-        _modeID_kwargs.update(modeID_kwargs)
-         
-        if not 'priorpath' in _modeID_kwargs:
-            self.priorpath = IO._getPriorPath()
-            
-            _modeID_kwargs['priorpath'] = self.priorpath
-        
-        self.modeID = modeID(**_modeID_kwargs)
-
-        self.modeID(**_modeID_kwargs)
+        if not hasattr(self, "modeID"):
+            self.makeModeID(**modeID_kwargs)
+        self.modeID(**self._modeID_kwargs)
         
     def runPeakbag(self, peakbag_kwargs={}):
         """ Run the peakbagging process using the provided or default keyword arguments.
