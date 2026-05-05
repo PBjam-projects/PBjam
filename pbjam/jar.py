@@ -639,7 +639,7 @@ def getCurvePercentiles(x, y, cdf=None, percentiles=None):
     if percentiles is None:
         percentiles = [0.5 - sc.erf(n/np.sqrt(2))/2 for n in range(-2, 3)][::-1]
 
-    y /= np.trapz(y, x)
+    y /= np.trapezoid(y, x)
   
     if cdf is None:
         cdf = si.cumulative_trapezoid(y, x, initial=0)
