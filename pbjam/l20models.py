@@ -71,7 +71,9 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
                           'H2_exp', 'H3_power', 
                           'H3_nu', 'H3_exp', 
                           'shot', 'nurot_e',  
-                          'inc',
+                          'inc', 'heii_amp',
+                          'heii_tau_scale', 'heii_width_scale',
+                          'heii_phase',
                          ]
         
         self.setLabels(self.addPriors, modelParLabels)
@@ -156,6 +158,18 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         # The inclination prior is a sine truncated between 0, and pi/2.
         if 'inc' not in self.addPriors.keys():
             self.priors['inc'] = dist.truncsine()
+
+        if 'heii_amp' not in self.addPriors.keys():
+            self.priors['heii_amp'] = dist.normal(loc=0., scale=0.01 * self.obs['dnu'][0])
+
+        if 'heii_tau_scale' not in self.addPriors.keys():
+            self.priors['heii_tau_scale'] = dist.uniform(loc=0.05, scale=0.45)
+
+        if 'heii_width_scale' not in self.addPriors.keys():
+            self.priors['heii_width_scale'] = dist.uniform(loc=0.005, scale=0.195)
+
+        if 'heii_phase' not in self.addPriors.keys():
+            self.priors['heii_phase'] = dist.uniform(loc=0., scale=2*jnp.pi)
 
     def setupDR(self):
         """ 
@@ -340,9 +354,9 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
 
         return enns 
 
-    def asymptotic_nu_p(self, numax, dnu, eps_p, alpha_p, **kwargs):
+    def smooth_asymptotic_nu_p(self, numax, dnu, eps_p, alpha_p, **kwargs):
         """ Compute the l=0 mode frequencies from the asymptotic relation for
-        p-modes
+        p-modes before adding acoustic glitches.
     
         Parameters
         ----------
@@ -366,6 +380,17 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         n_p = self._get_n_p(n_p_max)
 
         return (n_p + eps_p + alpha_p/2*(n_p - n_p_max)**2) * dnu, n_p
+
+    def asymptotic_nu_p(self, numax, dnu, eps_p, alpha_p, heii_amp,
+                        heii_tau_scale, heii_width_scale, heii_phase, **kwargs):
+        """ Compute HeII-glitch-corrected l=0 p-mode frequencies."""
+
+        nu0_smooth, n_p = self.smooth_asymptotic_nu_p(numax, dnu, eps_p, alpha_p)
+
+        glitch = jar.heii_glitch(nu0_smooth, dnu, heii_amp, heii_tau_scale,
+                                 heii_width_scale, heii_phase)
+
+        return nu0_smooth + glitch, n_p
     
     def parseSamples(self, smp, Nmax=5000):
         """
@@ -421,7 +446,15 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
   
         # l=0
         jasymptotic_nu_p = jax.jit(self.asymptotic_nu_p)
-        asymptotic_samps = np.array([jasymptotic_nu_p(smp['numax'][i], smp['dnu'][i], smp['eps_p'][i], smp['alpha_p'][i]) for i in range(N)])
+        jsmooth_asymptotic_nu_p = jax.jit(self.smooth_asymptotic_nu_p)
+        asymptotic_samps = np.array([jasymptotic_nu_p(smp['numax'][i], smp['dnu'][i],
+                                                      smp['eps_p'][i], smp['alpha_p'][i],
+                                                      smp['heii_amp'][i], smp['heii_tau_scale'][i],
+                                                      smp['heii_width_scale'][i], smp['heii_phase'][i])
+                                     for i in range(N)])
+        smooth_asymptotic_samps = np.array([jsmooth_asymptotic_nu_p(smp['numax'][i], smp['dnu'][i],
+                                                                    smp['eps_p'][i], smp['alpha_p'][i])
+                                           for i in range(N)])
         n_p = np.median(asymptotic_samps[:, 1, :], axis=0).astype(int)
         
         result['enn'] = np.append(result['enn'], n_p)
@@ -430,6 +463,9 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
 
         # Frequencies
         nu0_samps = asymptotic_samps[:, 0, :]
+        nu0_smooth_samps = smooth_asymptotic_samps[:, 0, :]
+        result['samples']['nu0_p_smooth'] = nu0_smooth_samps
+        result['summary']['nu0_p_smooth'] = np.array([jar.smryStats(nu0_smooth_samps[:, j]) for j in range(self.N_p)]).T
         jar.modeUpdoot(result, nu0_samps, 'freq', self.N_p)
 
         # Heights
@@ -461,4 +497,3 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         jar.modeUpdoot(result, W2_samps, 'width', self.N_p)
   
         return result
-

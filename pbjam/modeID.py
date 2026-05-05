@@ -156,9 +156,16 @@ class modeID(plotting, ):
 
         summary = {'n_p': self.l20result['enn'][self.l20result['ell']==0],
                    'nu0_p': self.l20result['summary']['freq'][0, self.l20result['ell']==0]}
+
+        if 'nu0_p_smooth' in self.l20result['summary']:
+            summary['nu0_p_smooth'] = self.l20result['summary']['nu0_p_smooth'][0]
  
         for key in ['numax', 'dnu', 'env_height', 'env_width', 'mode_width', 'teff', 'bp_rp']:
             summary[key] = self.l20result['summary'][key]
+
+        for key in ['heii_amp', 'heii_tau_scale', 'heii_width_scale', 'heii_phase']:
+            if key in self.l20result['summary']:
+                summary[key] = self.l20result['summary'][key]
 
         if model.lower() =='auto':
             

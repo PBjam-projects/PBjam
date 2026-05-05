@@ -95,6 +95,19 @@ class commonFuncs(jar.generalModelFuncs):
         
         return 1/P
     
+    def _get_obs_value(self, key, default=None):
+        """Return the central value from an l=2,0 summary-style observation."""
+
+        if key not in self.obs:
+            return default
+
+        value = self.obs[key]
+
+        if isinstance(value, (list, tuple, np.ndarray, jnp.ndarray)):
+            return value[0]
+
+        return value
+
     def asymptotic_nu_p(self, d01):
         """
         Computes the asymptotic l=1 mode frequencies based on a given frequency offset.
@@ -110,7 +123,20 @@ class commonFuncs(jar.generalModelFuncs):
             The l=1 mode frequencies, calculated as the observed l=0 frequencies plus the offset `d01`.
         """
 
-        return self.obs['nu0_p'] + d01
+        nu0_p = self.obs['nu0_p_smooth'] if 'nu0_p_smooth' in self.obs else self.obs['nu0_p']
+
+        nu1_p = nu0_p + d01
+
+        if all([key in self.obs for key in ['heii_amp', 'heii_tau_scale',
+                                            'heii_width_scale', 'heii_phase']]):
+            return nu1_p + jar.heii_glitch(nu1_p,
+                                           self.obs['dnu'][0],
+                                           self._get_obs_value('heii_amp'),
+                                           self._get_obs_value('heii_tau_scale'),
+                                           self._get_obs_value('heii_width_scale'),
+                                           self._get_obs_value('heii_phase'))
+
+        return nu1_p
 
     def select_n_g(self, fac=5):
         """ Select and initial range for n_g

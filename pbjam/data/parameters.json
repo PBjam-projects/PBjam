@@ -184,5 +184,29 @@
         "log10": false,
         "pca": false,
         "unit": "None"
+    },
+    "heii_amp": {
+        "info": "amplitude of the HeII acoustic glitch frequency perturbation",
+        "log10": false,
+        "pca": false,
+        "unit": "muHz"
+    },
+    "heii_tau_scale": {
+        "info": "HeII acoustic depth as a fraction of 1/dnu",
+        "log10": false,
+        "pca": false,
+        "unit": "None"
+    },
+    "heii_width_scale": {
+        "info": "HeII acoustic glitch damping width as a fraction of 1/dnu",
+        "log10": false,
+        "pca": false,
+        "unit": "None"
+    },
+    "heii_phase": {
+        "info": "phase of the HeII acoustic glitch frequency perturbation",
+        "log10": false,
+        "pca": false,
+        "unit": "rad"
     }
 }

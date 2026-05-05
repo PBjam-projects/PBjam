@@ -324,6 +324,24 @@ def envelope(nu, env_height, numax, env_width, **kwargs):
  
         return gaussian(nu, 2*env_height, numax, env_width)
 
+def heii_glitch(nu, dnu, heii_amp, heii_tau_scale, heii_width_scale, heii_phase):
+    """Acoustic-depth HeII glitch frequency perturbation.
+
+    The scale parameters are dimensionless fractions of ``1 / dnu``. Since PBjam
+    stores frequencies in muHz, the internal conversion gives acoustic times in
+    seconds.
+    """
+
+    omega = 2 * jnp.pi * nu * 1e-6
+
+    acoustic_scale = 1. / (dnu * 1e-6)
+
+    tau = heii_tau_scale * acoustic_scale
+
+    width = heii_width_scale * acoustic_scale
+
+    return heii_amp * jnp.exp(-2 * (width * omega)**2) * jnp.sin(2 * tau * omega + heii_phase)
+
 def modeUpdoot(result, sample, key, Nmodes):
     """
     Updates the `result` dictionary with summary statistics and samples for a given key.
