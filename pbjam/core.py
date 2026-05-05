@@ -9,7 +9,6 @@ peakbag classes.
 import numpy as np
 import copy
 from collections.abc import Iterable
-import jax.numpy as jnp
 from pbjam.plotting import plotting
 from pbjam import IO
 from pbjam.modeID import modeID
@@ -51,6 +50,71 @@ def _convertToList(arg):
     # Otherwise raise an error if the type is not supported
     else:
         raise TypeError("Unsupported type")
+
+
+def _shapeOf(arg, label):
+    try:
+        return np.shape(arg)
+    except Exception as exc:
+        raise TypeError(f'{label} must be array-like with shape (2, N) or (3, N).') from exc
+
+
+def _validateArrayInput(arg, label, allowedRows):
+    shape = _shapeOf(arg, label)
+
+    if len(shape) != 2:
+        allowed = ' or '.join([f'({n}, N)' for n in allowedRows])
+        raise ValueError(f'{label} must have shape {allowed}; got shape {shape}.')
+
+    if shape[0] not in allowedRows:
+        allowed = ' or '.join([f'({n}, N)' for n in allowedRows])
+        raise ValueError(f'{label} must have shape {allowed}; got shape {shape}.')
+
+    if shape[1] == 0:
+        raise ValueError(f'{label} must contain at least one sample.')
+
+
+def _validateTargetMapping(mapping, names, label):
+    expected = set(names)
+    received = set(mapping.keys())
+
+    if received != expected:
+        missing = sorted(expected - received)
+        unexpected = sorted(received - expected)
+        parts = []
+
+        if missing:
+            parts.append(f'missing targets {missing}')
+
+        if unexpected:
+            parts.append(f'unexpected targets {unexpected}')
+
+        raise ValueError(f'The targets in {label} must match name exactly: {"; ".join(parts)}.')
+
+
+def _isPerTargetMapping(arg, names):
+    if not isinstance(arg, dict):
+        return False
+
+    if all(key in arg for key in ['numax', 'dnu', 'teff']):
+        return False
+
+    return any(name in arg for name in names)
+
+
+def _validateFiniteScalar(value, label):
+    try:
+        arr = np.asarray(value)
+    except Exception as exc:
+        raise TypeError(f'{label} must be a finite scalar value.') from exc
+
+    if arr.shape != ():
+        raise ValueError(f'{label} must be a finite scalar value.')
+
+    if not np.isfinite(arr):
+        raise ValueError(f'{label} must be finite.')
+
+    return arr.item()
     
 def _validateObs(obs, name):
     """
@@ -67,18 +131,31 @@ def _validateObs(obs, name):
     ------
     ValueError
         If any of the required keys ('numax', 'dnu', 'teff') are missing from the `obs` dictionary.
-    AssertionError
-        If any value in `obs` is not iterable or is not in the form of a tuple with two elements (value, error).
+    TypeError
+        If `obs` is not a dictionary or an entry is not of the form (value, error).
+    ValueError
+        If an entry is missing, non-finite, or has a non-positive uncertainty.
     """
+
+    if not isinstance(obs, dict):
+        raise TypeError(f'obs for target {name} must be a dictionary.')
 
     for key in ['numax', 'dnu', 'teff']:
         if key not in obs.keys():
             raise ValueError(f'Missing {key} in obs for target {name}')
         
     for key, val in obs.items():
-        assert isinstance(val, Iterable), 'Entries in obs must be of the form (value, error)'
-    
-        assert len(val) == 2, 'Entries in obs must be of the form (value, error)'
+        if isinstance(val, (str, bytes)) or not isinstance(val, Iterable):
+            raise TypeError(f'obs["{key}"] for target {name} must be of the form (value, error).')
+
+        if len(val) != 2:
+            raise ValueError(f'obs["{key}"] for target {name} must be of the form (value, error).')
+
+        value = _validateFiniteScalar(val[0], f'obs["{key}"][0] for target {name}')
+        error = _validateFiniteScalar(val[1], f'obs["{key}"][1] for target {name}')
+
+        if error <= 0:
+            raise ValueError(f'obs["{key}"][1] for target {name} must be positive.')
 
 class session():
     """ Main class used to initiate peakbagging for several stars.
@@ -133,7 +210,11 @@ class session():
             self.inputs[nm] = {}
  
         # Handle obs
-        assert isinstance(obs, dict), 'The obs argument must be a dictionary.'
+        if not isinstance(obs, dict):
+            raise TypeError('The obs argument must be a dictionary.')
+
+        if _isPerTargetMapping(obs, self.inputs.keys()):
+            _validateTargetMapping(obs, self.inputs.keys(), 'obs')
 
         # If keys don't match, assume it applies to all targets.
         for key in self.inputs.keys():
@@ -152,20 +233,19 @@ class session():
         # spectrum can be a dictionary with keys corresponding to names, 
         if isinstance(spectrum, dict):
             
-            assert spectrum.keys() == self.inputs.keys(), 'The targets in spectrum must match those in names.'
+            _validateTargetMapping(spectrum, self.inputs.keys(), 'spectrum')
             
             # The values for each key must be iterable of shape (2, N)
             for key in self.inputs.keys():
-                 
-                assert spectrum[key].shape[0] == 2, f'Shape of spectrum for {key} must be (2, N)'
+                _validateArrayInput(spectrum[key], f'spectrum for {key}', (2,))
             
                 self.inputs[key]['f'] = spectrum[key][0]
 
                 self.inputs[key]['s'] = spectrum[key][1]
                 
         # Spectrum can be a iterable of shape (2, N)
-        elif isinstance(spectrum, (type(np.array([])), type(jnp.array([])))):
-            assert spectrum.shape[0] == 2, f'Shape of spectrum for must be (2, N)'
+        elif spectrum is not None:
+            _validateArrayInput(spectrum, 'spectrum', (2,))
             
             for key in self.inputs.keys():
                 self.inputs[key]['f'] = spectrum[0]
@@ -173,21 +253,20 @@ class session():
                 self.inputs[key]['s'] = spectrum[1]
 
         # Spectrum can also be None, in which case we first look for a corresponding item in timeseries
-        elif spectrum is None:
+        else:
 
             if isinstance(timeseries, dict):
 
-                assert timeseries.keys() == self.inputs.keys(), 'The targets in timeseries must match those in names.'
+                _validateTargetMapping(timeseries, self.inputs.keys(), 'timeseries')
 
-                for key in self.inputs.keys():    
-                    if timeseries[key].shape[0] == 3:
+                for key in self.inputs.keys():
+                    _validateArrayInput(timeseries[key], f'timeseries for {key}', (2, 3))
+
+                    if np.shape(timeseries[key])[0] == 3:
                         psd = IO.psd(key, time=timeseries[key][0], flux=timeseries[key][1], flux_err=timeseries[key][2], useWeighted=True)
 
-                    elif timeseries[key].shape[0] == 2:
+                    elif np.shape(timeseries[key])[0] == 2:
                         psd = IO.psd(key, time=timeseries[key][0], flux=timeseries[key][1])
-
-                    else:
-                        raise ValueError(f'Unhandled timeseries shape for computing psd for {key}')
                     
                     psd()
                     
@@ -195,17 +274,16 @@ class session():
 
                     self.inputs[key]['s'] = psd.powerdensity
                     
-            elif isinstance(timeseries, (type(np.array([])), type(jnp.array([])))):
-                if timeseries.shape[0] == 3:
-                    psd = IO.psd(key, time=timeseries[0], flux=timeseries[1], flux_err=timeseries[2], useWeighted=True)
-
-                elif timeseries.shape[0] == 2:
-                    psd = IO.psd(key, time=timeseries[0], flux=timeseries[1])
-
-                else:
-                    raise ValueError(f'Unhandled timeseries shape for computing psd for {key}')
+            elif timeseries is not None:
+                _validateArrayInput(timeseries, 'timeseries', (2, 3))
                 
                 for key in self.inputs.keys():
+                    if np.shape(timeseries)[0] == 3:
+                        psd = IO.psd(key, time=timeseries[0], flux=timeseries[1], flux_err=timeseries[2], useWeighted=True)
+
+                    elif np.shape(timeseries)[0] == 2:
+                        psd = IO.psd(key, time=timeseries[0], flux=timeseries[1])
+
                     psd()
                     
                     self.inputs[key]['f'] = psd.freq
@@ -215,8 +293,11 @@ class session():
             elif timeseries is None:
 
                 # Make sure lk_kwargs is not None
-                assert isinstance(lk_kwargs, dict), 'To download data lk_kwargs must be a dict.'
-                assert len(list(lk_kwargs.keys())) > 0
+                if not isinstance(lk_kwargs, dict):
+                    raise TypeError('To download data lk_kwargs must be a dict.')
+
+                if len(lk_kwargs) == 0:
+                    raise ValueError('To download data lk_kwargs must include Lightkurve search arguments, for example {"mission": "TESS", "exptime": 120}.')
 
                 # If keys are the same as input, loop through them and assign to input[key]
                 for key in self.inputs.keys():
@@ -233,10 +314,6 @@ class session():
                     self.inputs[key]['f'] = psd.freq
 
                     self.inputs[key]['s'] = psd.powerdensity
-            else:
-                raise ValueError('Timeseries must be a (2, N) array-like or dictionary with entries like the name argument.')
-        else:   
-            raise ValueError('Spectrum must be a (2, N) array-like or dictionary with entries like the name argument.')
 
  
         self.stars = []
@@ -322,9 +399,7 @@ class star(plotting):
   
         self.outpath = IO._setOutpath(self.name, self.outpath)
 
-        for key, val in self.obs.items():
-            assert isinstance(val, Iterable), 'Entries in obs must be of the form (value, error)'
-            assert len(val) == 2, 'Entries in obs must be of the form (value, error)'
+        _validateObs(self.obs, self.name)
             
     def runModeID(self, modeID_kwargs={}):
         """ Run the mode identification process using the provided or default keyword arguments.
