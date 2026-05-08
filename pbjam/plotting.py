@@ -109,7 +109,7 @@ def echelle(freq, power, dnu, fmin=0.0, fmax=None, offset=0.0, sampling=0.001):
 
 def plot_echelle(freq, power, numax, dnu, ax=None, cmap="Blues", scale=None,
                  interpolation=None, smooth=False, smooth_filter_width=50, offset=0.0,
-                 **kwargs):
+                 N_p=7, **kwargs):
     """Plots the echelle diagram.
 
     Parameters
@@ -120,6 +120,8 @@ def plot_echelle(freq, power, numax, dnu, ax=None, cmap="Blues", scale=None,
         Power values for every frequency
     dnu : float
         Value of deltanu
+    N_p : int, optional
+        Number of radial orders used to set the lower y-axis limit, by default 7.
     ax : matplotlib.axes._subplots.AxesSubplot, optional
         A matplotlib axes to plot into. If no axes is provided, a new one will
         be generated, by default None
@@ -160,7 +162,7 @@ def plot_echelle(freq, power, numax, dnu, ax=None, cmap="Blues", scale=None,
     ax.set_xlabel(f"Frequency mod {str(np.round(dnu, 2))} " + r"[$\mu$Hz]", fontsize=15)
     ax.set_ylabel(r"Frequency [$\mu$Hz]", fontsize=15)
     
-    ax.set_ylim(freq[0], echy[-1])
+    ax.set_ylim(_getEchelleYlim(freq, N_p, numax, dnu), echy[-1])
 
     for x in np.arange(echy.min(), echy.max()+dnu, dnu):
         ax.axhline(x, color='k', alpha=0.1)
@@ -306,6 +308,23 @@ def _echellify_freqs(nu, dnu, offset=0):
 
     return x, y
 
+def _asFiniteArray(values):
+
+    arr = np.asarray(values, dtype=float).ravel()
+
+    return arr[np.isfinite(arr)]
+
+def _getEchelleYlim(f, N_p, numax, dnu):
+
+    ymin = numax - (N_p//2 + 1) * dnu
+
+    f = _asFiniteArray(f)
+
+    if len(f) > 0:
+        ymin = max(ymin, f.min())
+
+    return ymin
+
 def _baseEchelle(f, s, N_p, numax, dnu, scale, **kwargs):
     """
     Generate a base echelle diagram of the PSD.
@@ -341,7 +360,7 @@ def _baseEchelle(f, s, N_p, numax, dnu, scale, **kwargs):
 
     fig, ax = plt.subplots(figsize=(8,7))
 
-    plot_echelle(f, s, numax, dnu, ax=ax, smooth=True, smooth_filter_width=dnu * scale, **kwargs)
+    plot_echelle(f, s, numax, dnu, ax=ax, smooth=True, smooth_filter_width=dnu * scale, N_p=N_p, **kwargs)
 
     return fig, ax
 
@@ -1540,4 +1559,3 @@ class plotting():
 
 
     #     return crnr
-     

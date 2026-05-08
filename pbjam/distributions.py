@@ -274,7 +274,7 @@ class beta():
         t = jnp.exp(a1 * jnp.log(x) + b1 * jnp.log(1.0 - x) + afac)
         u = err/t
         tmp = u * (a1 / x - b1 / (1.0 - x))
-        t = u/(1.0 - 0.5 * jnp.clip(tmp, a_max=1.0))
+        t = u/(1.0 - 0.5 * jnp.clip(tmp, None, 1.0))
         x -= t
         x = jnp.where(x <= 0., 0.5 * (x + t), x)
         x = jnp.where(x >= 1., 0.5 * (x + t + 1.), x)
@@ -313,7 +313,7 @@ class beta():
 
         ERROR = 1e-8
 
-        p = jnp.clip(p, a_min=0., a_max=1.)
+        p = jnp.clip(p, 0., 1.)
 
         x = jnp.where(jnp.logical_or(p <= 0.0, p >= 1.), p, self.compute_x(p, a, b))
 
