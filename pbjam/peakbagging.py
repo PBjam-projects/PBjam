@@ -1156,9 +1156,11 @@ class basePeakbag(plotting):
             Likelihood of the data given the model
         """
 
+        valid = jnp.all(jnp.isfinite(mod)) & jnp.all(mod > 0)
+
         lnp = -jnp.sum(jnp.log(mod) + self.s[self.sel] / mod)
  
-        return jax.lax.cond(jnp.isfinite(lnp), lambda : lnp, lambda : -jnp.inf)
+        return jax.lax.cond(valid & jnp.isfinite(lnp), lambda : lnp, lambda : -jnp.inf)
         
     variables = {'freq'   : {'info': 'mode frequency list'      , 'log10': False},
                  'height' : {'info': 'mode height list'         , 'log10': True},

@@ -132,9 +132,11 @@ class generalModelFuncs():
             Likelihood of the data given the model
         """
 
+        valid = jnp.all(jnp.isfinite(mod)) & jnp.all(mod > 0)
+
         L = -jnp.sum(jnp.log(mod) + self.s / mod)
 
-        return L 
+        return jax.lax.cond(valid & jnp.isfinite(L), lambda : L, lambda : -jnp.inf)
  
     @partial(jax.jit, static_argnums=(0))
     def lnlikelihood(self, theta):
@@ -164,7 +166,7 @@ class generalModelFuncs():
       
         lnlike +=  self.chi_sqr(mod)  
          
-        return lnlike 
+        return jax.lax.cond(jnp.isfinite(lnlike), lambda : lnlike, lambda : -jnp.inf)
     
     def addAddObsLike(self, thetaU):
         """ Add the additional probabilities to likelihood
