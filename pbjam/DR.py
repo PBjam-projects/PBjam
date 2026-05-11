@@ -338,3 +338,88 @@ class PCA():
         C = _X.T@W@_X * jnp.sum(self.weights) / (jnp.sum(self.weights)**2 - jnp.sum(self.weights**2))
 
         return C
+
+    def refinePriorByObservables(self, N=10000, minAccepted=100, sigmaInflation=3,
+                                 rng=None, densityScale=30, maxDensityPoints=20000,
+                                 maxKDESamples=3000):
+        """Rebuild the latent KDE using draws consistent with observations.
+
+        Draws from the current latent prior, maps those points into the PCA
+        parameter space, accepts them with a normal likelihood in the observed
+        dimensions, and rebuilds the latent-space quantile functions from the
+        accepted points.
+        """
+
+        from pbjam import distributions as dist
+
+        if not hasattr(self, 'ppf'):
+            raise AttributeError('Set the initial latent KDE before refining the prior.')
+
+        if not hasattr(self, 'dimsR') or self.dimsR == 0:
+            return None
+
+        obsLabels = [key for key in self.selectLabels
+                     if (key in self.varLabels) and (key in self.obs)]
+
+        obsLabels = [key for key in obsLabels if self.obs[key][1] > 0]
+
+        if len(obsLabels) == 0:
+            warnings.warn('Selective prior refinement skipped: no observed selection labels are in the PCA variables.',
+                          stacklevel=2)
+            return None
+
+        if rng is None:
+            rng = np.random.default_rng()
+        elif not hasattr(rng, 'uniform'):
+            rng = np.random.default_rng(rng)
+
+        u = rng.uniform(1e-9, 1 - 1e-9, size=(int(N), self.dimsR))
+        latentDraws = np.array([np.asarray(self.ppf[i](u[:, i])) for i in range(self.dimsR)]).T
+
+        physicalDraws = np.asarray(self.inverse_transform(jnp.array(latentDraws)))
+
+        obsIdx = np.array([self.varLabels.index(key) for key in obsLabels])
+        obsVals = np.array([self.obs[key][0] for key in obsLabels])
+        obsErrs = np.array([self.obs[key][1] for key in obsLabels]) * sigmaInflation
+
+        finite = np.all(np.isfinite(physicalDraws), axis=1)
+        delta = (physicalDraws[:, obsIdx] - obsVals) / obsErrs
+        logLike = -0.5 * np.sum(delta**2, axis=1)
+        finite &= np.isfinite(logLike)
+
+        if not np.any(finite):
+            raise ValueError('Selective prior refinement found no finite prior draws.')
+
+        acceptProb = np.zeros_like(logLike)
+        acceptProb[finite] = np.exp(logLike[finite] - np.max(logLike[finite]))
+        accepted = rng.uniform(0, 1, size=len(logLike)) < acceptProb
+
+        M = int(np.sum(accepted))
+        self.selectivePriorInfo = {'draws': int(N),
+                                   'accepted': M,
+                                   'minAccepted': int(minAccepted),
+                                   'sigmaInflation': sigmaInflation,
+                                   'labels': obsLabels}
+
+        if M < minAccepted:
+            raise ValueError(f'Selective prior refinement accepted {M} points, fewer than minAccepted={minAccepted}.')
+
+        self.selectivePhysicalSample = physicalDraws[accepted, :]
+        self.selectiveSubset = pd.DataFrame(self.selectivePhysicalSample, columns=self.varLabels)
+
+        selectiveLatentSample = np.asarray(self.transform(jnp.array(self.selectivePhysicalSample)))
+        self.selectiveLatentSample = selectiveLatentSample
+        if M > maxKDESamples:
+            kdeIdx = rng.choice(M, size=maxKDESamples, replace=False)
+            kdeLatentSample = selectiveLatentSample[kdeIdx, :]
+        else:
+            kdeLatentSample = selectiveLatentSample
+
+        self.selectivePriorInfo['kdeSamples'] = len(kdeLatentSample)
+        self.dataR = jnp.array(kdeLatentSample)
+
+        densityScale = max(1, min(densityScale, maxDensityPoints // len(kdeLatentSample)))
+        self.ppf, self.pdf, self.logpdf, self.cdf = dist.getQuantileFuncs(kdeLatentSample,
+                                                                          densityScale=densityScale)
+
+        return kdeLatentSample

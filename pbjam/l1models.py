@@ -483,7 +483,9 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
         Dictionary of prior distributions for the model parameters.
     """
 
-    def __init__(self, f, s, obs, addPriors, PCAsamples, PCAdims, vis={'V10': 1.22}, priorPath=None):
+    def __init__(self, f, s, obs, addPriors, PCAsamples, PCAdims, vis={'V10': 1.22}, priorPath=None,
+                 selectivePrior=True, selectivePriorN=10000, selectivePriorMin=100,
+                 selectivePriorSigma=3, selectivePriorSeed=None):
    
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
         
@@ -596,6 +598,12 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
             _Y = self.DR.transform(self.DR.dataF)
 
             self.DR.ppf, self.DR.pdf, self.DR.logpdf, self.DR.cdf = dist.getQuantileFuncs(_Y)
+
+            if self.selectivePrior:
+                self.DR.refinePriorByObservables(N=self.selectivePriorN,
+                                                 minAccepted=self.selectivePriorMin,
+                                                 sigmaInflation=self.selectivePriorSigma,
+                                                 rng=self.selectivePriorSeed)
 
             self.latentLabels = ['theta_%i' % (i) for i in range(self.PCAdims)]
 

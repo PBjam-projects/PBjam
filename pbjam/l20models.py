@@ -55,7 +55,9 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         Array of azimuthal orders of modes (fixed at m=0 but this may change in the future).
     """
 
-    def __init__(self, f, s, obs, addPriors, N_p, PCAsamples, PCAdims, vis={'V20': 0.71}, priorPath=None):
+    def __init__(self, f, s, obs, addPriors, N_p, PCAsamples, PCAdims, vis={'V20': 0.71}, priorPath=None,
+                 selectivePrior=True, selectivePriorN=10000, selectivePriorMin=100,
+                 selectivePriorSigma=3, selectivePriorSeed=None):
         
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
  
@@ -183,6 +185,12 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         _Y = self.DR.transform(self.DR.dataF)
 
         self.DR.ppf, self.DR.pdf, self.DR.logpdf, self.DR.cdf = dist.getQuantileFuncs(_Y)
+
+        if self.selectivePrior:
+            self.DR.refinePriorByObservables(N=self.selectivePriorN,
+                                             minAccepted=self.selectivePriorMin,
+                                             sigmaInflation=self.selectivePriorSigma,
+                                             rng=self.selectivePriorSeed)
         
         self.latentLabels = ['theta_%i' % (i) for i in range(self.PCAdims)]
        
@@ -461,4 +469,3 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         jar.modeUpdoot(result, W2_samps, 'width', self.N_p)
   
         return result
-

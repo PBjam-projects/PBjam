@@ -94,13 +94,21 @@ class modeID(plotting, ):
 
         s = self.s[self.sel]
 
+        selectiveKwargs = {key: kwargs[key] for key in ['selectivePrior',
+                                                        'selectivePriorN',
+                                                        'selectivePriorMin',
+                                                        'selectivePriorSigma',
+                                                        'selectivePriorSeed']
+                           if key in kwargs}
+
         self.l20model = Asyl20model(f, s, 
                                     self.obs, 
                                     self.addPriors, 
                                     self.N_p, 
                                     PCAsamples, 
                                     PCAdims,
-                                    priorPath=self.priorPath)
+                                    priorPath=self.priorPath,
+                                    **selectiveKwargs)
         
         self.l20Samples = self.l20model.runSampler(progress=progress,
                                                    dynamic=dynamic,
@@ -154,6 +162,13 @@ class modeID(plotting, ):
 
         s = self.l20residual
 
+        selectiveKwargs = {key: kwargs[key] for key in ['selectivePrior',
+                                                        'selectivePriorN',
+                                                        'selectivePriorMin',
+                                                        'selectivePriorSigma',
+                                                        'selectivePriorSeed']
+                           if key in kwargs}
+
         summary = {'n_p': self.l20result['enn'][self.l20result['ell']==0],
                    'nu0_p': self.l20result['summary']['freq'][0, self.l20result['ell']==0]}
  
@@ -179,7 +194,8 @@ class modeID(plotting, ):
                                       self.addPriors,
                                       PCAsamples, 
                                       PCAdims,
-                                      priorPath=self.priorPath)
+                                      priorPath=self.priorPath,
+                                      **selectiveKwargs)
             
         elif model.lower() == 'rgb':
             self.l1model = RGBl1model(f, s,  
