@@ -60,6 +60,7 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
                  selectivePriorSigma=3, selectivePriorSeed=None):
         
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.likelihoodScale = 1.0
  
         self.Nyquist = self.f[-1]
 

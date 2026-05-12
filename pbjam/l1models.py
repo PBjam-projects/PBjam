@@ -214,6 +214,7 @@ class Asyl1model(samplers.DynestySampling, commonFuncs):
     def __init__(self, f, s, obs, addPriors, PCAsamples, vis={'V10': 1.22}, priorPath=None):
 
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.likelihoodScale = 1.0
  
         modelParLabels = ['d01', 'nurot_e',  'inc',]
 
@@ -488,6 +489,7 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
                  selectivePriorSigma=3, selectivePriorSeed=None):
    
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.likelihoodScale = 1.0
         
         modelParLabels = ['p_L', 'p_D', 'DPi1', 'eps_g',
                           'd01', 'dnu', 'numax', 'nurot_c', 
@@ -1011,6 +1013,7 @@ class RGBl1model(samplers.DynestySampling, commonFuncs):
     def __init__(self, f, s, obs, addPriors, PCAsamples, rootiter=15, vis={'V10': 1.22}, priorPath=None, modelChoice='simple'):
         
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.likelihoodScale = 1.0
   
         modelParLabels = ['d01', 'DPi1', 'teff', 'eps_g', 'q',
                           'nurot_c', 'nurot_e', 'inc', 'dnu',

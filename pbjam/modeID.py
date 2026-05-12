@@ -57,8 +57,8 @@ class modeID(plotting, ):
 
         # Set frequency range to compute the model on. Default is one radial order above/below the requested number.
         if self.freqLimits is None:
-            self.freqLimits = [self.obs['numax'][0] - self.obs['dnu'][0]*(self.N_p//2+1), 
-                               self.obs['numax'][0] + self.obs['dnu'][0]*(self.N_p//2+1),]
+            self.freqLimits = [self.obs['numax'][0] - self.obs['dnu'][0]*(self.N_p//2+5), 
+                               self.obs['numax'][0] + self.obs['dnu'][0]*(self.N_p//2+5),]
             
         self.sel = (np.array(self.freqLimits).min() < self.f) & (self.f < np.array(self.freqLimits).max())   
 
