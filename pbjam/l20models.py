@@ -89,7 +89,7 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
  
         self.ndims = len(self.priors.keys())
  
-        self.setAddObs(keys=['teff', 'bp_rp'])
+        self.setAddObs(keys=['numax', 'dnu', 'teff', 'bp_rp'])
 
         self.ell = np.append(np.zeros(self.N_p), np.zeros(self.N_p) + 2)
         

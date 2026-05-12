@@ -272,3 +272,47 @@ def test_gaussian():
 
     assert jar.gaussian(mu, A, mu, sigma) == A
 
+
+class DummyObsLikelihoodModel(jar.generalModelFuncs):
+    def __init__(self):
+        self.obs = {
+            'numax': (100.0, 10.0),
+            'dnu': (10.0, 1.0),
+            'teff': (5800.0, 100.0),
+            'bp_rp': (0.8, 0.1),
+        }
+        self.s = jnp.array([0.0])
+        self.setAddObs(keys=['numax', 'dnu', 'teff', 'bp_rp', 'missing'])
+
+    def unpackParams(self, theta):
+        return {
+            'numax': theta[0],
+            'dnu': theta[1],
+            'teff': theta[2],
+            'bp_rp': theta[3],
+        }
+
+    def model(self, thetaU):
+        return jnp.array([1.0])
+
+
+def test_additional_observables_are_used_in_full_likelihood():
+    model = DummyObsLikelihoodModel()
+    theta = jnp.array([100.0, 10.0, 5800.0, 0.8])
+
+    expected = sum(obs.logpdf(theta[i]) for i, obs in enumerate(model.addObs.values()))
+
+    assert set(model.addObs) == {'numax', 'dnu', 'teff', 'bp_rp'}
+    assert np.isclose(model.lnlikelihood(theta), expected)
+
+
+def test_setAddObs_skips_missing_and_invalid_constraints():
+    model = jar.generalModelFuncs()
+    model.obs = {
+        'teff': (5800.0, 100.0),
+        'bp_rp': (0.8, 0.0),
+    }
+
+    model.setAddObs(keys=['numax', 'teff', 'bp_rp'])
+
+    assert set(model.addObs) == {'teff'}

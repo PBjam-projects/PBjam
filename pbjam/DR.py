@@ -395,9 +395,10 @@ class PCA():
 
         obsIdx = np.array([self.varLabels.index(key) for key in obsLabels])
         obsVals = np.array([self.obs[key][0] for key in obsLabels])
-        obsErrs = np.array([self.obs[key][1] for key in obsLabels]) * sigmaInflation
+        baseObsErrs = np.array([self.obs[key][1] for key in obsLabels])
 
         nDraws = max(1, int(N))
+        currentSigmaInflation = sigmaInflation
         while True:
             latentDraws = rng.normal(loc=np.asarray(self.latentPriorLoc),
                                      scale=np.asarray(self.latentPriorScale),
@@ -406,6 +407,7 @@ class PCA():
             physicalDraws = np.asarray(self.inverse_transform(jnp.array(latentDraws)))
 
             finite = np.all(np.isfinite(physicalDraws), axis=1)
+            obsErrs = baseObsErrs * currentSigmaInflation
             delta = (physicalDraws[:, obsIdx] - obsVals) / obsErrs
             logLike = -0.5 * np.sum(delta**2, axis=1)
             finite &= np.isfinite(logLike)
@@ -421,17 +423,19 @@ class PCA():
             self.selectivePriorInfo = {'draws': nDraws,
                                        'accepted': M,
                                        'minAccepted': int(minAccepted),
-                                       'sigmaInflation': sigmaInflation,
+                                       'sigmaInflation': currentSigmaInflation,
                                        'labels': obsLabels}
 
             if M >= minAccepted:
                 break
 
             nextNDraws = 2 * nDraws
+            nextSigmaInflation = 2 * currentSigmaInflation
             warnings.warn(f'Selective prior refinement accepted {M} points, fewer than minAccepted={minAccepted}. '
-                          f'Retrying with {nextNDraws} draws.',
+                          f'Retrying with {nextNDraws} draws and sigmaInflation={nextSigmaInflation}.',
                           stacklevel=2)
             nDraws = nextNDraws
+            currentSigmaInflation = nextSigmaInflation
 
         self.selectivePhysicalSample = physicalDraws[accepted, :]
         self.selectiveSubset = pd.DataFrame(self.selectivePhysicalSample, columns=self.varLabels)
