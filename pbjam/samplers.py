@@ -66,8 +66,7 @@ class EmceeSampling():
 
         lnpr = self.lnprior(theta)
         
-        # TODO: Remove this dev scaling once the prior is well established.
-        lnlk = 1e-6 * self.lnlikelihood(theta)
+        lnlk = self.lnlikelihood(theta)
         
         return lnlk + lnpr
     
