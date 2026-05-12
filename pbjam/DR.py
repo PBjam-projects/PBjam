@@ -319,6 +319,29 @@ class PCA():
 
         self.dataR = self.transform(self.dataF)
 
+    def setLatentNormalPrior(self, latentSample=None):
+        """Set independent normal priors for each latent PCA coordinate."""
+
+        from pbjam import distributions as dist
+
+        if latentSample is None:
+            latentSample = self.dataR
+
+        latentSample = np.asarray(latentSample)
+        loc = np.mean(latentSample, axis=0)
+        scale = np.std(latentSample, axis=0)
+        scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
+
+        self.latentPriorLoc = jnp.array(loc)
+        self.latentPriorScale = jnp.array(scale)
+        self.latentPriors = [dist.normal(loc=self.latentPriorLoc[i],
+                                         scale=self.latentPriorScale[i])
+                             for i in range(self.dimsR)]
+        self.ppf = [prior.ppf for prior in self.latentPriors]
+        self.pdf = [prior.pdf for prior in self.latentPriors]
+        self.logpdf = [prior.logpdf for prior in self.latentPriors]
+        self.cdf = [prior.cdf for prior in self.latentPriors]
+
     def covarianceMatrix(self, _X):
         """ Compute the weighted covariance matrix
 
@@ -340,20 +363,17 @@ class PCA():
         return C
 
     def refinePriorByObservables(self, N=10000, minAccepted=100, sigmaInflation=3,
-                                 rng=None, densityScale=30, maxDensityPoints=20000,
-                                 maxKDESamples=3000):
-        """Rebuild the latent KDE using draws consistent with observations.
+                                 rng=None):
+        """Refit latent normal priors using draws consistent with observations.
 
         Draws from the current latent prior, maps those points into the PCA
         parameter space, accepts them with a normal likelihood in the observed
-        dimensions, and rebuilds the latent-space quantile functions from the
+        dimensions, and rebuilds the independent latent normal priors from the
         accepted points.
         """
 
-        from pbjam import distributions as dist
-
         if not hasattr(self, 'ppf'):
-            raise AttributeError('Set the initial latent KDE before refining the prior.')
+            raise AttributeError('Set the initial latent prior before refining the prior.')
 
         if not hasattr(self, 'dimsR') or self.dimsR == 0:
             return None
@@ -373,53 +393,53 @@ class PCA():
         elif not hasattr(rng, 'uniform'):
             rng = np.random.default_rng(rng)
 
-        u = rng.uniform(1e-9, 1 - 1e-9, size=(int(N), self.dimsR))
-        latentDraws = np.array([np.asarray(self.ppf[i](u[:, i])) for i in range(self.dimsR)]).T
-
-        physicalDraws = np.asarray(self.inverse_transform(jnp.array(latentDraws)))
-
         obsIdx = np.array([self.varLabels.index(key) for key in obsLabels])
         obsVals = np.array([self.obs[key][0] for key in obsLabels])
         obsErrs = np.array([self.obs[key][1] for key in obsLabels]) * sigmaInflation
 
-        finite = np.all(np.isfinite(physicalDraws), axis=1)
-        delta = (physicalDraws[:, obsIdx] - obsVals) / obsErrs
-        logLike = -0.5 * np.sum(delta**2, axis=1)
-        finite &= np.isfinite(logLike)
+        nDraws = max(1, int(N))
+        while True:
+            latentDraws = rng.normal(loc=np.asarray(self.latentPriorLoc),
+                                     scale=np.asarray(self.latentPriorScale),
+                                     size=(nDraws, self.dimsR))
 
-        if not np.any(finite):
-            raise ValueError('Selective prior refinement found no finite prior draws.')
+            physicalDraws = np.asarray(self.inverse_transform(jnp.array(latentDraws)))
 
-        acceptProb = np.zeros_like(logLike)
-        acceptProb[finite] = np.exp(logLike[finite] - np.max(logLike[finite]))
-        accepted = rng.uniform(0, 1, size=len(logLike)) < acceptProb
+            finite = np.all(np.isfinite(physicalDraws), axis=1)
+            delta = (physicalDraws[:, obsIdx] - obsVals) / obsErrs
+            logLike = -0.5 * np.sum(delta**2, axis=1)
+            finite &= np.isfinite(logLike)
 
-        M = int(np.sum(accepted))
-        self.selectivePriorInfo = {'draws': int(N),
-                                   'accepted': M,
-                                   'minAccepted': int(minAccepted),
-                                   'sigmaInflation': sigmaInflation,
-                                   'labels': obsLabels}
+            if not np.any(finite):
+                raise ValueError('Selective prior refinement found no finite prior draws.')
 
-        if M < minAccepted:
-            raise ValueError(f'Selective prior refinement accepted {M} points, fewer than minAccepted={minAccepted}.')
+            acceptProb = np.zeros_like(logLike)
+            acceptProb[finite] = np.exp(logLike[finite] - np.max(logLike[finite]))
+            accepted = rng.uniform(0, 1, size=len(logLike)) < acceptProb
+
+            M = int(np.sum(accepted))
+            self.selectivePriorInfo = {'draws': nDraws,
+                                       'accepted': M,
+                                       'minAccepted': int(minAccepted),
+                                       'sigmaInflation': sigmaInflation,
+                                       'labels': obsLabels}
+
+            if M >= minAccepted:
+                break
+
+            nextNDraws = 2 * nDraws
+            warnings.warn(f'Selective prior refinement accepted {M} points, fewer than minAccepted={minAccepted}. '
+                          f'Retrying with {nextNDraws} draws.',
+                          stacklevel=2)
+            nDraws = nextNDraws
 
         self.selectivePhysicalSample = physicalDraws[accepted, :]
         self.selectiveSubset = pd.DataFrame(self.selectivePhysicalSample, columns=self.varLabels)
 
         selectiveLatentSample = np.asarray(self.transform(jnp.array(self.selectivePhysicalSample)))
         self.selectiveLatentSample = selectiveLatentSample
-        if M > maxKDESamples:
-            kdeIdx = rng.choice(M, size=maxKDESamples, replace=False)
-            kdeLatentSample = selectiveLatentSample[kdeIdx, :]
-        else:
-            kdeLatentSample = selectiveLatentSample
 
-        self.selectivePriorInfo['kdeSamples'] = len(kdeLatentSample)
-        self.dataR = jnp.array(kdeLatentSample)
+        self.dataR = jnp.array(selectiveLatentSample)
+        self.setLatentNormalPrior(selectiveLatentSample)
 
-        densityScale = max(1, min(densityScale, maxDensityPoints // len(kdeLatentSample)))
-        self.ppf, self.pdf, self.logpdf, self.cdf = dist.getQuantileFuncs(kdeLatentSample,
-                                                                          densityScale=densityScale)
-
-        return kdeLatentSample
+        return selectiveLatentSample

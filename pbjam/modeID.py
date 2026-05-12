@@ -65,7 +65,9 @@ class modeID(plotting, ):
         if self.priorPath is None:
             self.priorPath = IO._getPriorPath()
  
-    def runl20model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, PCAsamples=50, PCAdims=6, **kwargs):
+    def runl20model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
+                    PCAsamples=50, PCAdims=6, selectivePrior=True, selectivePriorN=10000,
+                    selectivePriorMin=100, selectivePriorSigma=3, selectivePriorSeed=None, **kwargs):
         """
         Runs the l20 model on the selected spectrum.
 
@@ -94,12 +96,11 @@ class modeID(plotting, ):
 
         s = self.s[self.sel]
 
-        selectiveKwargs = {key: kwargs[key] for key in ['selectivePrior',
-                                                        'selectivePriorN',
-                                                        'selectivePriorMin',
-                                                        'selectivePriorSigma',
-                                                        'selectivePriorSeed']
-                           if key in kwargs}
+        selectiveKwargs = {'selectivePrior': selectivePrior,
+                           'selectivePriorN': selectivePriorN,
+                           'selectivePriorMin': selectivePriorMin,
+                           'selectivePriorSigma': selectivePriorSigma,
+                           'selectivePriorSeed': selectivePriorSeed}
 
         self.l20model = Asyl20model(f, s, 
                                     self.obs, 
@@ -124,7 +125,10 @@ class modeID(plotting, ):
  
         return self.l20result
 
-    def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, model='auto', PCAsamples=500, PCAdims=7, **kwargs):
+    def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
+                   model='auto', PCAsamples=500, PCAdims=7, selectivePrior=True,
+                   selectivePriorN=10000, selectivePriorMin=100, selectivePriorSigma=3,
+                   selectivePriorSeed=None, **kwargs):
         """
         Runs the l1 model on the selected spectrum.
 
@@ -162,12 +166,11 @@ class modeID(plotting, ):
 
         s = self.l20residual
 
-        selectiveKwargs = {key: kwargs[key] for key in ['selectivePrior',
-                                                        'selectivePriorN',
-                                                        'selectivePriorMin',
-                                                        'selectivePriorSigma',
-                                                        'selectivePriorSeed']
-                           if key in kwargs}
+        selectiveKwargs = {'selectivePrior': selectivePrior,
+                           'selectivePriorN': selectivePriorN,
+                           'selectivePriorMin': selectivePriorMin,
+                           'selectivePriorSigma': selectivePriorSigma,
+                           'selectivePriorSeed': selectivePriorSeed}
 
         summary = {'n_p': self.l20result['enn'][self.l20result['ell']==0],
                    'nu0_p': self.l20result['summary']['freq'][0, self.l20result['ell']==0]}

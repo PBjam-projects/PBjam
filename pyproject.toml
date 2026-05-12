@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pbjam"
-version = "2.0.4"
+version = "2.1.1"
 authors = [{ name="Martin Nielsen", email="m.b.nielsen.1@bham.ac.uk"},
            { name="Guy Davies", email="g.r.davies@bham.ac.uk"},
            { name="Joel Ong", email="joelong@hawaii.edu"},

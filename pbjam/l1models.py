@@ -595,9 +595,7 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
  
         if len(self.pcaLabels) > 0 and not self.badPrior:
 
-            _Y = self.DR.transform(self.DR.dataF)
-
-            self.DR.ppf, self.DR.pdf, self.DR.logpdf, self.DR.cdf = dist.getQuantileFuncs(_Y)
+            self.DR.setLatentNormalPrior()
 
             if self.selectivePrior:
                 self.DR.refinePriorByObservables(N=self.selectivePriorN,
@@ -625,10 +623,7 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
         self.priors = {}
 
         for i, key in enumerate(self.latentLabels):
-            self.priors[key] = dist.distribution(self.DR.ppf[i], 
-                                                 self.DR.pdf[i], 
-                                                 self.DR.logpdf[i], 
-                                                 self.DR.cdf[i])
+            self.priors[key] = self.DR.latentPriors[i]
 
         AddKeys = [k for k in self.variables if k in self.addPriors.keys()]
 
