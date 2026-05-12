@@ -1,6 +1,6 @@
 """Tests for the jar module"""
 
-from pbjam import jar
+from pbjam import distributions, jar, samplers
 import numpy as np
 import numpy.testing as npt #import assert_almost_equal, assert_array_equal
 import jax.numpy as jnp
@@ -81,7 +81,7 @@ def emceeSamplingClass():
 
     """
 
-    return jar.EmceeSampling()
+    return samplers.EmceeSampling()
 
 @pytest.fixture
 def dynestySamplingClass():
@@ -91,27 +91,70 @@ def dynestySamplingClass():
     
     """
 
-    return jar.DynestySampling()
+    return samplers.DynestySampling()
+
+class DummyDynestySampler(samplers.DynestySampling):
+    def __init__(self):
+        self.priors = {
+            'x': distributions.uniform(loc=1.0, scale=2.0),
+            'y': distributions.uniform(loc=-1.0, scale=4.0),
+        }
+        self.ndims = len(self.priors)
+
+    def lnlikelihood(self, theta, **kwargs):
+        return -np.sum(np.asarray(theta) ** 2)
 
 def test_DSptform():
-    pass   
+    sampler = DummyDynestySampler()
+
+    theta = sampler.ptform(jnp.array([0.5, 0.5]))
+
+    assert np.allclose(theta, jnp.array([2.0, 1.0]))
 
 def test_DSinitSamples():
-    pass
+    sampler = DummyDynestySampler()
 
+    u, v, L = sampler.initSamples(ndims=sampler.ndims, nlive=5, nliveMult=3)
+
+    assert u.shape == (5, 2)
+    assert v.shape == (5, 2)
+    assert L.shape == (5,)
+    assert np.all(np.isfinite(L))
+
+@pytest.mark.skip(reason='Dynesty runSampler is an integration test and is too expensive for this unit suite.')
 def test_DSrunSampler():
-    pass
+    sampler = DummyDynestySampler()
+    sampler.runSampler(minSamples=10, sampler_kwargs={'nlive': 5})
 
 def test_modeUpdoot():
-    jar.modeUpdoot
-    pass
+    sample = np.array([[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]])
+    result = {
+        'summary': {'freq': np.empty((2, 0))},
+        'samples': {'freq': np.empty((sample.shape[0], 0))},
+    }
+
+    jar.modeUpdoot(result, sample, 'freq', Nmodes=2)
+
+    assert result['summary']['freq'].shape == (2, 2)
+    assert result['samples']['freq'].shape == sample.shape
+    assert np.allclose(result['summary']['freq'][0], [2.0, 5.0])
+    assert np.allclose(result['samples']['freq'], sample)
 
 def test_smryStats():
-    jar.smryStats
-    pass
+    stats = jar.smryStats(np.array([1.0, 2.0, 3.0]))
+
+    assert stats.shape == (2,)
+    assert stats[0] == 2.0
+    assert stats[1] > 0
 
 def test_envelope():
-    pass
+    nu = jnp.array([90.0, 100.0, 110.0])
+    env = jar.envelope(nu, env_height=3.0, numax=100.0, env_width=10.0)
+
+    assert type(env) is type(nu)
+    assert env[1] == 6.0
+    assert env[0] == env[2]
+    assert env[0] < env[1]
 
 def test_attenuation():
     """Some tests for attenuation function in jar"""
@@ -228,6 +271,4 @@ def test_gaussian():
     assert all(jar.gaussian(x, -A, mu, sigma) < 0)
 
     assert jar.gaussian(mu, A, mu, sigma) == A
-
-
 

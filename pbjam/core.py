@@ -76,9 +76,11 @@ def _validateObs(obs, name):
             raise ValueError(f'Missing {key} in obs for target {name}')
         
     for key, val in obs.items():
-        assert isinstance(val, Iterable), 'Entries in obs must be of the form (value, error)'
+        if not isinstance(val, Iterable):
+            raise TypeError('Entries in obs must be of the form (value, error)')
     
-        assert len(val) == 2, 'Entries in obs must be of the form (value, error)'
+        if len(val) != 2:
+            raise ValueError('Entries in obs must be of the form (value, error)')
 
 class session():
     """ Main class used to initiate peakbagging for several stars.
@@ -133,7 +135,8 @@ class session():
             self.inputs[nm] = {}
  
         # Handle obs
-        assert isinstance(obs, dict), 'The obs argument must be a dictionary.'
+        if not isinstance(obs, dict):
+            raise TypeError('The obs argument must be a dictionary.')
 
         # If keys don't match, assume it applies to all targets.
         for key in self.inputs.keys():
@@ -152,12 +155,14 @@ class session():
         # spectrum can be a dictionary with keys corresponding to names, 
         if isinstance(spectrum, dict):
             
-            assert spectrum.keys() == self.inputs.keys(), 'The targets in spectrum must match those in names.'
+            if spectrum.keys() != self.inputs.keys():
+                raise ValueError('The targets in spectrum must match those in names.')
             
             # The values for each key must be iterable of shape (2, N)
             for key in self.inputs.keys():
                  
-                assert spectrum[key].shape[0] == 2, f'Shape of spectrum for {key} must be (2, N)'
+                if spectrum[key].shape[0] != 2:
+                    raise ValueError(f'Shape of spectrum for {key} must be (2, N)')
             
                 self.inputs[key]['f'] = spectrum[key][0]
 
@@ -165,7 +170,8 @@ class session():
                 
         # Spectrum can be a iterable of shape (2, N)
         elif isinstance(spectrum, (type(np.array([])), type(jnp.array([])))):
-            assert spectrum.shape[0] == 2, f'Shape of spectrum for must be (2, N)'
+            if spectrum.shape[0] != 2:
+                raise ValueError('Shape of spectrum for must be (2, N)')
             
             for key in self.inputs.keys():
                 self.inputs[key]['f'] = spectrum[0]
@@ -177,7 +183,8 @@ class session():
 
             if isinstance(timeseries, dict):
 
-                assert timeseries.keys() == self.inputs.keys(), 'The targets in timeseries must match those in names.'
+                if timeseries.keys() != self.inputs.keys():
+                    raise ValueError('The targets in timeseries must match those in names.')
 
                 for key in self.inputs.keys():    
                     if timeseries[key].shape[0] == 3:
@@ -196,16 +203,16 @@ class session():
                     self.inputs[key]['s'] = psd.powerdensity
                     
             elif isinstance(timeseries, (type(np.array([])), type(jnp.array([])))):
-                if timeseries.shape[0] == 3:
-                    psd = IO.psd(key, time=timeseries[0], flux=timeseries[1], flux_err=timeseries[2], useWeighted=True)
-
-                elif timeseries.shape[0] == 2:
-                    psd = IO.psd(key, time=timeseries[0], flux=timeseries[1])
-
-                else:
-                    raise ValueError(f'Unhandled timeseries shape for computing psd for {key}')
-                
                 for key in self.inputs.keys():
+                    if timeseries.shape[0] == 3:
+                        psd = IO.psd(key, time=timeseries[0], flux=timeseries[1], flux_err=timeseries[2], useWeighted=True)
+
+                    elif timeseries.shape[0] == 2:
+                        psd = IO.psd(key, time=timeseries[0], flux=timeseries[1])
+
+                    else:
+                        raise ValueError(f'Unhandled timeseries shape for computing psd for {key}')
+
                     psd()
                     
                     self.inputs[key]['f'] = psd.freq
@@ -215,8 +222,10 @@ class session():
             elif timeseries is None:
 
                 # Make sure lk_kwargs is not None
-                assert isinstance(lk_kwargs, dict), 'To download data lk_kwargs must be a dict.'
-                assert len(list(lk_kwargs.keys())) > 0
+                if not isinstance(lk_kwargs, dict):
+                    raise TypeError('To download data lk_kwargs must be a dict.')
+                if len(list(lk_kwargs.keys())) == 0:
+                    raise ValueError('To download data lk_kwargs must contain at least one entry.')
 
                 # If keys are the same as input, loop through them and assign to input[key]
                 for key in self.inputs.keys():
@@ -323,8 +332,10 @@ class star(plotting):
         self.outpath = IO._setOutpath(self.name, self.outpath)
 
         for key, val in self.obs.items():
-            assert isinstance(val, Iterable), 'Entries in obs must be of the form (value, error)'
-            assert len(val) == 2, 'Entries in obs must be of the form (value, error)'
+            if not isinstance(val, Iterable):
+                raise TypeError('Entries in obs must be of the form (value, error)')
+            if len(val) != 2:
+                raise ValueError('Entries in obs must be of the form (value, error)')
             
     def runModeID(self, modeID_kwargs={}):
         """ Run the mode identification process using the provided or default keyword arguments.
