@@ -2,10 +2,10 @@
 
 This module provides :class:`modeID`, the PBjam interface for estimating the
 locations and properties of oscillation modes before detailed peakbagging. The
-mode-identification stage fits the background plus the ``l=2,0`` modes first and
-then fits the ``l=1`` modes on the residual spectrum. Splitting the fit this way
-keeps the more difficult mixed-mode calculation separate from the radial and
-quadrupole-mode model.
+mode-identification stage selects a model family from the input ``teff`` and
+``dnu`` before fitting. Main-sequence stars are fit with a combined ``l=0,1,2``
+model. Subgiants and red giants are fit with the background plus ``l=2,0`` modes
+first, then the ``l=1`` modes on the residual spectrum.
 
 The merged output from this stage is intended as the input to the detailed
 peakbagging classes. Since :class:`modeID` inherits from
@@ -19,6 +19,7 @@ import jax.numpy as jnp
 import numpy as np
 from pbjam.l1models import Asyl1model, Mixl1model, RGBl1model
 from pbjam.l20models import Asyl20model
+from pbjam.MSmodels import Asyl021model
 from pbjam.plotting import plotting
 from pbjam import IO
 import pandas as pd
@@ -186,6 +187,47 @@ class modeID(plotting, ):
  
         return self.l20result
 
+    def runMSmodel(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
+                   loglikelihoodMultiplier=1.0, PCAsamples=50, PCAdims=6, selectivePrior=True,
+                   selectivePriorN=10000, selectivePriorMin=100, selectivePriorSigma=1,
+                   selectivePriorSeed=None, **kwargs):
+        """Fit the main-sequence ``l=0,1,2`` model in one stage."""
+
+        f = self.f[self.sel]
+
+        s = self.s[self.sel]
+
+        selectiveKwargs = {'selectivePrior': selectivePrior,
+                           'selectivePriorN': selectivePriorN,
+                           'selectivePriorMin': selectivePriorMin,
+                           'selectivePriorSigma': selectivePriorSigma,
+                           'selectivePriorSeed': selectivePriorSeed}
+
+        self.MSmodel = Asyl021model(f, s,
+                                    self.obs,
+                                    self.addPriors,
+                                    self.N_p,
+                                    PCAsamples,
+                                    PCAdims,
+                                    priorPath=self.priorPath,
+                                    **selectiveKwargs)
+
+        self.MSmodel.likelihoodScale = float(loglikelihoodMultiplier)
+
+        self.MSSamples = self.MSmodel.runSampler(progress=progress,
+                                                 dynamic=dynamic,
+                                                 minSamples=minSamples,
+                                                 logl_kwargs=logl_kwargs,
+                                                 sampler_kwargs=sampler_kwargs)
+
+        MSSamplesU = self.MSmodel.unpackSamples(self.MSSamples)
+
+        self.MSresult = self.MSmodel.parseSamples(MSSamplesU)
+
+        self.result = self.MSresult
+
+        return self.MSresult
+
     def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
                    model='auto', loglikelihoodMultiplier=1.0, PCAsamples=500, PCAdims=7,
                    selectivePrior=True, selectivePriorN=10000, selectivePriorMin=100,
@@ -326,8 +368,10 @@ class modeID(plotting, ):
                  loglikelihoodMultiplier=1.0, **kwargs):
         """Run the full mode-identification workflow.
 
-        Calling a :class:`modeID` instance runs :meth:`runl20model` followed by
-        :meth:`runl1model`. The merged output is available as ``self.result``.
+        Calling a :class:`modeID` instance selects the mode-identification model
+        from the observed ``teff`` and ``dnu`` before fitting. Main-sequence
+        stars use the combined ``l=0,1,2`` model. Subgiants and red giants use
+        the two-stage ``l=2,0`` then ``l=1`` workflow.
 
         Parameters
         ----------
@@ -347,7 +391,23 @@ class modeID(plotting, ):
         **kwargs
             Accepted for API compatibility; currently not used by this method.
         """
-         
+
+        if model.lower() == 'auto':
+            model = self.selectModel()
+
+            print(f'Input Teff={self.obs["teff"][0]}K and dnu={self.obs["dnu"][0]}muHz suggests the appropriate l=1 model is: {model}')
+
+        model = model.lower()
+
+        if model == 'ms':
+            self.runMSmodel(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
+                            loglikelihoodMultiplier=loglikelihoodMultiplier)
+
+            return
+
+        if model not in ['sg', 'rgb']:
+            raise ValueError(f'Model {model} is invalid. Please use either MS, SG or RGB.')
+
         self.runl20model(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
                          loglikelihoodMultiplier=loglikelihoodMultiplier)
         
