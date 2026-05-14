@@ -130,7 +130,10 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
  
         # The instrumental components are set based on the PSD, not Bayesian but...
         hi_idx = self.f > min([self.f[-1], self.Nyquist]) - 10
-        shot_est = jnp.nanmean(self.s[hi_idx])
+        shot_s = self.s[hi_idx]
+        shot_est = jnp.nanmean(shot_s)
+        shot_var = jnp.nanvar(shot_s) / jnp.sum(jnp.isfinite(shot_s))
+        shot_scale = jnp.sqrt(jnp.log1p(shot_var / shot_est**2)) / jnp.log(10.0)
 
         lo_idx = abs(self.f - self.f[0]) < 10
         inst_est = jnp.nanmean(self.s[lo_idx])
@@ -138,7 +141,7 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         mu = jnp.array([1, inst_est - shot_est]).max()
         
         if 'H3_power' not in self.addPriors.keys():
-            self.priors['H3_power'] = dist.normal(loc=jnp.log10(mu * self.f[0]), scale=1)  
+            self.priors['H3_power'] = dist.normal(loc=jnp.log10(mu * self.f[0]), scale=0.01)  
 
         if 'H3_nu' not in self.addPriors.keys():
             self.priors['H3_nu'] = dist.beta(a=1.2, b=1.2, loc=-1, scale=2)  
@@ -147,7 +150,7 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
             self.priors['H3_exp'] = dist.beta(a=1.2, b=1.2, loc=1.5, scale=3.5)  
 
         if 'shot' not in self.addPriors.keys():
-            self.priors['shot'] = dist.normal(loc=jnp.log10(shot_est), scale=0.1)
+            self.priors['shot'] = dist.normal(loc=jnp.log10(shot_est), scale=shot_scale)
 
         # Envelope rotation prior. Envelope rotation is not included in this model.
         if 'nurot_e' not in self.addPriors.keys():

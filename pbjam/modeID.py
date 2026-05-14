@@ -95,8 +95,9 @@ class modeID(plotting, ):
             self.priorPath = IO._getPriorPath()
  
     def runl20model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
-                    PCAsamples=50, PCAdims=6, selectivePrior=True, selectivePriorN=10000,
-                    selectivePriorMin=100, selectivePriorSigma=3, selectivePriorSeed=None, **kwargs):
+                    loglikelihoodMultiplier=1.0, PCAsamples=50, PCAdims=6, selectivePrior=True,
+                    selectivePriorN=10000, selectivePriorMin=100, selectivePriorSigma=1,
+                    selectivePriorSeed=None, **kwargs):
         """Fit the background plus ``l=2,0`` modes.
 
         This is the first mode-identification stage. It fits the selected part
@@ -118,6 +119,9 @@ class modeID(plotting, ):
             Extra keyword arguments passed to the dynesty sampler.
         logl_kwargs : dict, optional
             Extra keyword arguments passed to the log-likelihood function.
+        loglikelihoodMultiplier : float, optional
+            Multiplier applied to the final log-likelihood value passed to the
+            nested sampler. Default is 1.0.
         PCAsamples : int, optional
             Number of prior samples used in the PCA-based prior construction.
             Default is 50.
@@ -165,6 +169,8 @@ class modeID(plotting, ):
                                     PCAdims,
                                     priorPath=self.priorPath,
                                     **selectiveKwargs)
+
+        self.l20model.likelihoodScale = float(loglikelihoodMultiplier)
         
         self.l20Samples = self.l20model.runSampler(progress=progress,
                                                    dynamic=dynamic,
@@ -181,9 +187,9 @@ class modeID(plotting, ):
         return self.l20result
 
     def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
-                   model='auto', PCAsamples=500, PCAdims=7, selectivePrior=True,
-                   selectivePriorN=10000, selectivePriorMin=100, selectivePriorSigma=3,
-                   selectivePriorSeed=None, **kwargs):
+                   model='auto', loglikelihoodMultiplier=1.0, PCAsamples=500, PCAdims=7,
+                   selectivePrior=True, selectivePriorN=10000, selectivePriorMin=100,
+                   selectivePriorSigma=1, selectivePriorSeed=None, **kwargs):
         """Fit the ``l=1`` modes on the ``l=2,0`` residual spectrum.
 
         This method should be called after :meth:`runl20model`, because it uses
@@ -210,6 +216,9 @@ class modeID(plotting, ):
             observed ``dnu`` and ``teff`` values. ``'ms'`` uses the asymptotic
             main-sequence model, ``'sg'`` uses the mixed-mode subgiant model,
             and ``'rgb'`` uses the red-giant branch model.
+        loglikelihoodMultiplier : float, optional
+            Multiplier applied to the final log-likelihood value passed to the
+            nested sampler. Default is 1.0.
         PCAsamples : int, optional
             Number of prior samples used in the PCA-based prior construction
             for models that use PCA priors. Default is 500.
@@ -296,6 +305,8 @@ class modeID(plotting, ):
                                       modelChoice='simple')
         else:
             raise ValueError(f'Model {model} is invalid. Please use either MS, SG or RGB.')
+
+        self.l1model.likelihoodScale = float(loglikelihoodMultiplier)
          
         self.l1Samples  = self.l1model.runSampler(progress=progress,
                                                   dynamic=dynamic,
@@ -311,7 +322,8 @@ class modeID(plotting, ):
 
         return self.l1result
 
-    def __call__(self, model='auto', progress=True, dynamic=False, sampler_kwargs={}, logl_kwargs={}, **kwargs):
+    def __call__(self, model='auto', progress=True, dynamic=False, sampler_kwargs={}, logl_kwargs={},
+                 loglikelihoodMultiplier=1.0, **kwargs):
         """Run the full mode-identification workflow.
 
         Calling a :class:`modeID` instance runs :meth:`runl20model` followed by
@@ -329,13 +341,18 @@ class modeID(plotting, ):
             Extra keyword arguments passed to both samplers.
         logl_kwargs : dict, optional
             Extra keyword arguments passed to both likelihood functions.
+        loglikelihoodMultiplier : float, optional
+            Multiplier applied to the final model log-likelihood values
+            passed to the nested sampler. Default is 1.0.
         **kwargs
             Accepted for API compatibility; currently not used by this method.
         """
          
-        self.runl20model(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs)
+        self.runl20model(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
+                         loglikelihoodMultiplier=loglikelihoodMultiplier)
         
-        self.runl1model(progress, dynamic, model=model, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs)
+        self.runl1model(progress, dynamic, model=model, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
+                        loglikelihoodMultiplier=loglikelihoodMultiplier)
  
     def mergeResults(self, l20result=None, l1result=None, N=5000):
         """Merge ``l=2,0`` and ``l=1`` model outputs.

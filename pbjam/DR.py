@@ -309,7 +309,7 @@ class PCA():
          
         self.covariance = self.covarianceMatrix(_X)
         
-        self.eigvals, self.eigvectors = jnp.linalg.eig(self.covariance)
+        self.eigvals, self.eigvectors = jnp.linalg.eigh(self.covariance)
 
         self.sortidx = sorted(range(len(self.eigvals)), key=lambda i: self.eigvals[i], reverse=True)[:self.dimsR]
 
@@ -362,7 +362,7 @@ class PCA():
 
         return C
 
-    def refinePriorByObservables(self, N=10000, minAccepted=100, sigmaInflation=3,
+    def refinePriorByObservables(self, N=10000, minAccepted=100, sigmaInflation=1,
                                  rng=None):
         """Refit latent normal priors using draws consistent with observations.
 
