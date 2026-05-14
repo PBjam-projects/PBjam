@@ -364,8 +364,30 @@ class modeID(plotting, ):
 
         return self.l1result
 
+    def _unpackPriorKwargs(self, prior_kwargs, runkey):
+        """Return prior kwargs for a specific mode-identification run method."""
+
+        if prior_kwargs is None:
+            return {}
+
+        aliases = {
+            'ms': ['ms', 'MS', 'MSmodel', 'runMSmodel'],
+            'l20': ['l20', 'l02', '20', '02', 'runl20model'],
+            'l1': ['l1', '1', 'runl1model'],
+        }
+
+        nested_keys = {key for values in aliases.values() for key in values}
+
+        run_kwargs = {key: value for key, value in prior_kwargs.items() if key not in nested_keys}
+
+        for key in aliases[runkey]:
+            if key in prior_kwargs:
+                run_kwargs.update(prior_kwargs[key])
+
+        return run_kwargs
+
     def __call__(self, model='auto', progress=True, dynamic=False, sampler_kwargs={}, logl_kwargs={},
-                 loglikelihoodMultiplier=1.0, **kwargs):
+                 loglikelihoodMultiplier=1.0, prior_kwargs=None, **kwargs):
         """Run the full mode-identification workflow.
 
         Calling a :class:`modeID` instance selects the mode-identification model
@@ -388,9 +410,19 @@ class modeID(plotting, ):
         loglikelihoodMultiplier : float, optional
             Multiplier applied to the final model log-likelihood values
             passed to the nested sampler. Default is 1.0.
+        prior_kwargs : dict, optional
+            Keyword arguments passed to the prior/PCA setup of the selected run
+            methods, such as ``PCAsamples``, ``PCAdims`` and selective-prior
+            options. Flat keys are passed to every run method. Nested keys
+            ``'ms'``, ``'l20'`` and ``'l1'`` override the flat values for that
+            specific run method.
         **kwargs
             Accepted for API compatibility; currently not used by this method.
         """
+
+        ms_prior_kwargs = self._unpackPriorKwargs(prior_kwargs, 'ms')
+        l20_prior_kwargs = self._unpackPriorKwargs(prior_kwargs, 'l20')
+        l1_prior_kwargs = self._unpackPriorKwargs(prior_kwargs, 'l1')
 
         if model.lower() == 'auto':
             model = self.selectModel()
@@ -401,7 +433,7 @@ class modeID(plotting, ):
 
         if model == 'ms':
             self.runMSmodel(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
-                            loglikelihoodMultiplier=loglikelihoodMultiplier)
+                            loglikelihoodMultiplier=loglikelihoodMultiplier, **ms_prior_kwargs)
 
             return
 
@@ -409,10 +441,10 @@ class modeID(plotting, ):
             raise ValueError(f'Model {model} is invalid. Please use either MS, SG or RGB.')
 
         self.runl20model(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
-                         loglikelihoodMultiplier=loglikelihoodMultiplier)
+                         loglikelihoodMultiplier=loglikelihoodMultiplier, **l20_prior_kwargs)
         
         self.runl1model(progress, dynamic, model=model, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
-                        loglikelihoodMultiplier=loglikelihoodMultiplier)
+                        loglikelihoodMultiplier=loglikelihoodMultiplier, **l1_prior_kwargs)
  
     def mergeResults(self, l20result=None, l1result=None, N=5000):
         """Merge ``l=2,0`` and ``l=1`` model outputs.
