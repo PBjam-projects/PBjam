@@ -309,7 +309,7 @@ class PCA():
          
         self.covariance = self.covarianceMatrix(_X)
         
-        self.eigvals, self.eigvectors = jnp.linalg.eig(self.covariance)
+        self.eigvals, self.eigvectors = jnp.linalg.eigh(self.covariance)
 
         self.sortidx = sorted(range(len(self.eigvals)), key=lambda i: self.eigvals[i], reverse=True)[:self.dimsR]
 
@@ -318,6 +318,29 @@ class PCA():
         self.erank = jnp.exp(-jnp.sum(self.explained_variance_ratio * np.log(self.explained_variance_ratio))).real
 
         self.dataR = self.transform(self.dataF)
+
+    def setLatentNormalPrior(self, latentSample=None):
+        """Set independent normal priors for each latent PCA coordinate."""
+
+        from pbjam import distributions as dist
+
+        if latentSample is None:
+            latentSample = self.dataR
+
+        latentSample = np.asarray(latentSample)
+        loc = np.mean(latentSample, axis=0)
+        scale = np.std(latentSample, axis=0)
+        scale = np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
+
+        self.latentPriorLoc = jnp.array(loc)
+        self.latentPriorScale = jnp.array(scale)
+        self.latentPriors = [dist.normal(loc=self.latentPriorLoc[i],
+                                         scale=self.latentPriorScale[i])
+                             for i in range(self.dimsR)]
+        self.ppf = [prior.ppf for prior in self.latentPriors]
+        self.pdf = [prior.pdf for prior in self.latentPriors]
+        self.logpdf = [prior.logpdf for prior in self.latentPriors]
+        self.cdf = [prior.cdf for prior in self.latentPriors]
 
     def covarianceMatrix(self, _X):
         """ Compute the weighted covariance matrix
@@ -338,3 +361,89 @@ class PCA():
         C = _X.T@W@_X * jnp.sum(self.weights) / (jnp.sum(self.weights)**2 - jnp.sum(self.weights**2))
 
         return C
+
+    def refinePriorByObservables(self, N=10000, minAccepted=100, sigmaInflation=1,
+                                 rng=None):
+        """Refit latent normal priors using draws consistent with observations.
+
+        Draws from the current latent prior, maps those points into the PCA
+        parameter space, accepts them with a normal likelihood in the observed
+        dimensions, and rebuilds the independent latent normal priors from the
+        accepted points.
+        """
+
+        if not hasattr(self, 'ppf'):
+            raise AttributeError('Set the initial latent prior before refining the prior.')
+
+        if not hasattr(self, 'dimsR') or self.dimsR == 0:
+            return None
+
+        obsLabels = [key for key in self.selectLabels
+                     if (key in self.varLabels) and (key in self.obs)]
+
+        obsLabels = [key for key in obsLabels if self.obs[key][1] > 0]
+
+        if len(obsLabels) == 0:
+            warnings.warn('Selective prior refinement skipped: no observed selection labels are in the PCA variables.',
+                          stacklevel=2)
+            return None
+
+        if rng is None:
+            rng = np.random.default_rng()
+        elif not hasattr(rng, 'uniform'):
+            rng = np.random.default_rng(rng)
+
+        obsIdx = np.array([self.varLabels.index(key) for key in obsLabels])
+        obsVals = np.array([self.obs[key][0] for key in obsLabels])
+        baseObsErrs = np.array([self.obs[key][1] for key in obsLabels])
+
+        nDraws = max(1, int(N))
+        currentSigmaInflation = sigmaInflation
+        while True:
+            latentDraws = rng.normal(loc=np.asarray(self.latentPriorLoc),
+                                     scale=np.asarray(self.latentPriorScale),
+                                     size=(nDraws, self.dimsR))
+
+            physicalDraws = np.asarray(self.inverse_transform(jnp.array(latentDraws)))
+
+            finite = np.all(np.isfinite(physicalDraws), axis=1)
+            obsErrs = baseObsErrs * currentSigmaInflation
+            delta = (physicalDraws[:, obsIdx] - obsVals) / obsErrs
+            logLike = -0.5 * np.sum(delta**2, axis=1)
+            finite &= np.isfinite(logLike)
+
+            if not np.any(finite):
+                raise ValueError('Selective prior refinement found no finite prior draws.')
+
+            acceptProb = np.zeros_like(logLike)
+            acceptProb[finite] = np.exp(logLike[finite] - np.max(logLike[finite]))
+            accepted = rng.uniform(0, 1, size=len(logLike)) < acceptProb
+
+            M = int(np.sum(accepted))
+            self.selectivePriorInfo = {'draws': nDraws,
+                                       'accepted': M,
+                                       'minAccepted': int(minAccepted),
+                                       'sigmaInflation': currentSigmaInflation,
+                                       'labels': obsLabels}
+
+            if M >= minAccepted:
+                break
+
+            nextNDraws = 2 * nDraws
+            nextSigmaInflation = 2 * currentSigmaInflation
+            warnings.warn(f'Selective prior refinement accepted {M} points, fewer than minAccepted={minAccepted}. '
+                          f'Retrying with {nextNDraws} draws and sigmaInflation={nextSigmaInflation}.',
+                          stacklevel=2)
+            nDraws = nextNDraws
+            currentSigmaInflation = nextSigmaInflation
+
+        self.selectivePhysicalSample = physicalDraws[accepted, :]
+        self.selectiveSubset = pd.DataFrame(self.selectivePhysicalSample, columns=self.varLabels)
+
+        selectiveLatentSample = np.asarray(self.transform(jnp.array(self.selectivePhysicalSample)))
+        self.selectiveLatentSample = selectiveLatentSample
+
+        self.dataR = jnp.array(selectiveLatentSample)
+        self.setLatentNormalPrior(selectiveLatentSample)
+
+        return selectiveLatentSample

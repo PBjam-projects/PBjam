@@ -113,6 +113,12 @@ class generalModelFuncs():
         self.addObs = {}
 
         for key in keys:
+            if key not in self.obs:
+                continue
+
+            if self.obs[key][1] <= 0:
+                continue
+
             self.addObs[key] = dist.normal(loc=self.obs[key][0], 
                                            scale=self.obs[key][1])
  

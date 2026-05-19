@@ -5,7 +5,7 @@ PBjam is intended to be a user-friendly peakbagging tool. The most straightforwa
 
 Session
 -------
-The :class:`~pbjam.core.session` class is the most straightforward way to analyze one or more stars with PBjam. It can automatically download the data and compute the power density spectrum, and then go through all the steps in the moden ID and peakbagging process. The `Session notebook <Examples/example-session.ipynb>`_ provides an example of how to use the :class:`~pbjam.core.session` class. 
+The :class:`~pbjam.core.session` class is the most straightforward way to analyze one or more stars with PBjam. It can automatically download the data and compute the power density spectrum, and then go through all the steps in the mode ID and peakbagging process. The `Session notebook <Examples/example-session.ipynb>`_ provides an example of how to use the :class:`~pbjam.core.session` class. 
  
 
 Star
@@ -20,7 +20,7 @@ Advanced
 It is not strictly necessary to use either the :class:`~pbjam.core.session` or :class:`~pbjam.core.star` classes. The `mode ID <Examples/example-modeID.ipynb>`_ and `peakbag <Examples/example-peakbag.ipynb>`_ notebooks show a lower-level walkthrough of the steps that PBjam goes through for peakbagging.
 
 .. note:: 
-    For additional useful examples see the `Examples <https://github.com/grd349/PBjam/tree/master/Examples>`_ directory.
+    For additional useful examples see the `Examples <examples.html>`_ page.
 
 Papers
 ------

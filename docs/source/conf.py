@@ -15,6 +15,12 @@
 import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
+from importlib.metadata import PackageNotFoundError, version as package_version
+
+try:
+    pbjam_version = package_version('pbjam')
+except PackageNotFoundError:
+    pbjam_version = '0+unknown'
 
 
 # -- Project information -----------------------------------------------------
@@ -24,9 +30,9 @@ copyright = '2019, Martin Nielsen'
 author = 'Martin Nielsen'
 
 # The short X.Y version
-version = ''
+version = '.'.join(pbjam_version.split('.')[:2])
 # The full version, including alpha/beta/rc tags
-release = '0.0.1'
+release = pbjam_version
 
 
 # -- General configuration ---------------------------------------------------
@@ -52,12 +58,11 @@ extensions = [
     'nbsphinx',
 ]
 
- 
+# Keep notebook conversion failures visible during docs builds.
+nbsphinx_allow_errors = False
 
-# If your notebooks contain non-trivial outputs like images, set this option
-nbsphinx_allow_errors = True  # This ensures Sphinx builds even if a notebook fails
-
-# Run the notebooks or never.
+# Tutorials download mission data and run expensive samplers, so docs builds
+# render the checked-in outputs instead of re-executing notebooks.
 nbsphinx_execute = 'never'
 
 # Exclude build directory and Jupyter backup files:
@@ -69,9 +74,10 @@ templates_path = ['_templates']
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
 #
-# source_suffix = ['.rst', '.md']
-#source_suffix = '.rst'
-source_suffix = {'.rst': 'restructuredtext'}
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.ipynb': 'nbsphinx',
+}
 
 # The master toctree document.
 master_doc = 'index'
@@ -82,11 +88,6 @@ master_doc = 'index'
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
 language = 'en'
-
-# List of patterns, relative to source directory, that match files and
-# directories to ignore when looking for source files.
-# This pattern also affects html_static_path and html_extra_path.
-exclude_patterns = []
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = None

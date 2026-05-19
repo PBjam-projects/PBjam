@@ -1504,5 +1504,3 @@ class DynestyPeakbag(basePeakbag, samplers.DynestySampling):
 class EmceePeakbag(basePeakbag, samplers.EmceeSampling):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-  
