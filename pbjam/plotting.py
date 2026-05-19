@@ -318,12 +318,14 @@ def _echellify_freqs(nu, dnu, offset=0):
     return x, y
 
 def _asFiniteArray(values):
+    """Return input values as a flattened finite float array."""
 
     arr = np.asarray(values, dtype=float).ravel()
 
     return arr[np.isfinite(arr)]
 
 def _getEchelleYlim(f, N_p, numax, dnu):
+    """Estimate the lower frequency limit for an echelle plot."""
 
     ymin = numax - (N_p//2 + 1) * dnu
 

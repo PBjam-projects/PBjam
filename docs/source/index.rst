@@ -6,6 +6,7 @@
 
    setup
    usage
+   examples
    api
    license
    help
