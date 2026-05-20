@@ -18,6 +18,7 @@ Modules in PBjam
    jar
    l1models
    l20models
+   MSmodels
    modeID
    peakbagging
    plotting
@@ -25,7 +26,6 @@ Modules in PBjam
    
    
    
-
 
 
 

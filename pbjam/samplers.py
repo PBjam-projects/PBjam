@@ -585,6 +585,16 @@ class DynestySampling():
         """
     def __init__(self):        
         pass
+
+    def _scaledLnlikelihood(self, theta, **kwargs):
+        """
+        Apply an optional log-likelihood tempering factor for dynesty.
+
+        Models that do not set ``likelihoodScale`` retain the unscaled
+        likelihood used by previous versions.
+        """
+
+        return getattr(self, 'likelihoodScale', 1.0) * self.lnlikelihood(theta, **kwargs)
     
     @partial(jax.jit, static_argnums=(0,)) # Must stay jitted.
     def ptform(self, u):
@@ -669,7 +679,7 @@ class DynestySampling():
 
         v = np.array([self.ptform(u[i, :]) for i in range(u.shape[0])])
          
-        L = np.array([self.lnlikelihood(v[i, :], **logl_kwargs) for i in range(u.shape[0])])
+        L = np.array([self._scaledLnlikelihood(v[i, :], **logl_kwargs) for i in range(u.shape[0])])
 
         idx = np.isfinite(L)
                 
@@ -717,7 +727,7 @@ class DynestySampling():
             skwargs['live_points'] = self.initSamples(ndims, logl_kwargs=logl_kwargs, **skwargs)
         
         if dynamic:
-            sampler = dynesty.DynamicNestedSampler(self.lnlikelihood, 
+            sampler = dynesty.DynamicNestedSampler(self._scaledLnlikelihood, 
                                                    self.ptform, 
                                                    ndims,  
                                                    **skwargs,
@@ -729,16 +739,16 @@ class DynestySampling():
                                dlogz_init=1e-3 * (skwargs['nlive'] - 1) + 0.01, 
                                nlive_init=skwargs['nlive'])  
             
-            _nsamples = sampler.results.niter
+            # _nsamples = sampler.results.niter
 
-            if _nsamples < minSamples:     
-                missingSamples = minSamples-_nsamples
+            # if _nsamples < minSamples:
+            #     missingSamples = minSamples-_nsamples
 
-                sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
+            #     sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
 
         else:
              
-            sampler = dynesty.NestedSampler(self.lnlikelihood, 
+            sampler = dynesty.NestedSampler(self._scaledLnlikelihood, 
                                             self.ptform, 
                                             ndims,  
                                             **skwargs,
@@ -746,14 +756,14 @@ class DynestySampling():
                                             )
             
             sampler.run_nested(print_progress=progress, 
-                               save_bounds=False, dlogz=0.1,)
+                               save_bounds=False)
 
-            _nsamples = sampler.results.niter + sampler.results.nlive
+            # _nsamples = sampler.results.niter + sampler.results.nlive
             
-            if _nsamples < minSamples:
-                missingSamples = minSamples-_nsamples
+            # if _nsamples < minSamples:
+            #     missingSamples = minSamples-_nsamples
 
-                sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
+            #     sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
  
         result = sampler.results
 

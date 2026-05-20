@@ -109,7 +109,7 @@ def echelle(freq, power, dnu, fmin=0.0, fmax=None, offset=0.0, sampling=0.001):
 
 def plot_echelle(freq, power, numax, dnu, ax=None, cmap="Blues", scale=None,
                  interpolation=None, smooth=False, smooth_filter_width=50, offset=0.0,
-                 **kwargs):
+                 N_p=7, **kwargs):
     """Plots the echelle diagram.
 
     Parameters
@@ -120,6 +120,8 @@ def plot_echelle(freq, power, numax, dnu, ax=None, cmap="Blues", scale=None,
         Power values for every frequency
     dnu : float
         Value of deltanu
+    N_p : int, optional
+        Number of radial orders used to set the lower y-axis limit, by default 7.
     ax : matplotlib.axes._subplots.AxesSubplot, optional
         A matplotlib axes to plot into. If no axes is provided, a new one will
         be generated, by default None
@@ -160,7 +162,7 @@ def plot_echelle(freq, power, numax, dnu, ax=None, cmap="Blues", scale=None,
     ax.set_xlabel(f"Frequency mod {str(np.round(dnu, 2))} " + r"[$\mu$Hz]", fontsize=15)
     ax.set_ylabel(r"Frequency [$\mu$Hz]", fontsize=15)
     
-    ax.set_ylim(freq[0], echy[-1])
+    ax.set_ylim(_getEchelleYlim(freq, N_p, numax, dnu), echy[-1])
 
     for x in np.arange(echy.min(), echy.max()+dnu, dnu):
         ax.axhline(x, color='k', alpha=0.1)
@@ -180,6 +182,8 @@ def _scatterFrame(model, samples, key1, key2, ax,):
     select1 = model.DR.selectedSubset[key1]
     
     select2 = model.DR.selectedSubset[key2]
+
+    selectiveSubset = getattr(model.DR, 'selectiveSubset', None)
     
     # Samples from the sampling
     samplesU = model.unpackSamples(samples)
@@ -202,6 +206,9 @@ def _scatterFrame(model, samples, key1, key2, ax,):
     ax.scatter(prior1[pidx], prior2[pidx], ec='k', alpha=0.25, s=8, fc='None')
 
     ax.scatter(select1, select2, c='C3', alpha=0.55, s=15)
+
+    if selectiveSubset is not None and key1 in selectiveSubset.keys() and key2 in selectiveSubset.keys():
+        ax.scatter(selectiveSubset[key1], selectiveSubset[key2], c='C0', alpha=0.25, s=8)
   
     ax.set_xlim(minx, maxx)
     
@@ -273,6 +280,10 @@ def _baseReference(model, samples, fac=3):
     axes[0, 0].scatter(np.nan, np.nan, ec='k', alpha=1, s=8, fc='None', label=f'Viable prior sample')
     
     axes[0, 0].scatter(np.nan, np.nan, c='C3', alpha=0.55, s=15, label='Selected prior sample')
+
+    if hasattr(model.DR, 'selectiveSubset'):
+        M = getattr(model.DR, 'selectivePriorInfo', {}).get('accepted', len(model.DR.selectiveSubset))
+        axes[0, 0].scatter(np.nan, np.nan, c='C0', alpha=0.25, s=8, label=f'Selective prior sample (M={M})')
     
     if not np.isnan(samples).all():
         axes[0, 0].errorbar(np.nan, np.nan, xerr=np.array([[np.nan], [np.nan]]), yerr=np.array([[np.nan], [np.nan]]), 
@@ -305,6 +316,25 @@ def _echellify_freqs(nu, dnu, offset=0):
     y =  nu
 
     return x, y
+
+def _asFiniteArray(values):
+    """Return input values as a flattened finite float array."""
+
+    arr = np.asarray(values, dtype=float).ravel()
+
+    return arr[np.isfinite(arr)]
+
+def _getEchelleYlim(f, N_p, numax, dnu):
+    """Estimate the lower frequency limit for an echelle plot."""
+
+    ymin = numax - (N_p//2 + 1) * dnu
+
+    f = _asFiniteArray(f)
+
+    if len(f) > 0:
+        ymin = max(ymin, f.min())
+
+    return ymin
 
 def _baseEchelle(f, s, N_p, numax, dnu, scale, **kwargs):
     """
@@ -341,7 +371,7 @@ def _baseEchelle(f, s, N_p, numax, dnu, scale, **kwargs):
 
     fig, ax = plt.subplots(figsize=(8,7))
 
-    plot_echelle(f, s, numax, dnu, ax=ax, smooth=True, smooth_filter_width=dnu * scale, **kwargs)
+    plot_echelle(f, s, numax, dnu, ax=ax, smooth=True, smooth_filter_width=dnu * scale, N_p=N_p, **kwargs)
 
     return fig, ax
 
@@ -1540,4 +1570,3 @@ class plotting():
 
 
     #     return crnr
-     

@@ -303,7 +303,7 @@ class psd():
 
         # freq_cen = 0.5*self.Nyquist
         freq_cen = max([0.5*self.Nyquist, width + df])
-        
+
         Nfreq = int(oversampling*width/df)
 
         freq = freq_cen + (df/oversampling) * np.arange(-Nfreq, Nfreq, 1)
@@ -554,5 +554,4 @@ def _getPriorPath():
     """
     
     return os.path.join(*[PACKAGEDIR, 'data', 'prior_data.csv'])
-
 

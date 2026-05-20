@@ -113,6 +113,12 @@ class generalModelFuncs():
         self.addObs = {}
 
         for key in keys:
+            if key not in self.obs:
+                continue
+
+            if self.obs[key][1] <= 0:
+                continue
+
             self.addObs[key] = dist.normal(loc=self.obs[key][0], 
                                            scale=self.obs[key][1])
  
@@ -132,9 +138,11 @@ class generalModelFuncs():
             Likelihood of the data given the model
         """
 
+        valid = jnp.all(jnp.isfinite(mod)) & jnp.all(mod > 0)
+
         L = -jnp.sum(jnp.log(mod) + self.s / mod)
 
-        return L 
+        return jax.lax.cond(valid & jnp.isfinite(L), lambda : L, lambda : -jnp.inf)
  
     @partial(jax.jit, static_argnums=(0))
     def lnlikelihood(self, theta):
@@ -164,7 +172,7 @@ class generalModelFuncs():
       
         lnlike +=  self.chi_sqr(mod)  
          
-        return lnlike 
+        return jax.lax.cond(jnp.isfinite(lnlike), lambda : lnlike, lambda : -jnp.inf)
     
     def addAddObsLike(self, thetaU):
         """ Add the additional probabilities to likelihood
@@ -598,6 +606,12 @@ def lor(nu, nu0, h, w):
 
     return h / (1.0 + 4.0/w**2*(nu - nu0)**2)
 
+def _trapezoid(y, x):
+    try:
+        return np.trapezoid(y, x)
+    except AttributeError:
+        return np.trapz(y, x)
+
 def getCurvePercentiles(x, y, cdf=None, percentiles=None):
     """ Compute percentiles of value along a curve
 
@@ -621,7 +635,7 @@ def getCurvePercentiles(x, y, cdf=None, percentiles=None):
     if percentiles is None:
         percentiles = [0.5 - sc.erf(n/np.sqrt(2))/2 for n in range(-2, 3)][::-1]
 
-    y /= np.trapz(y, x)
+    y /= _trapezoid(y, x)
   
     if cdf is None:
         cdf = si.cumulative_trapezoid(y, x, initial=0)

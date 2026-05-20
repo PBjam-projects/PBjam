@@ -134,10 +134,7 @@ class beta():
     def _set_stdatt(self):
         """ Set mean and median for the distribution
         """
-        x = jnp.linspace(self.ppf(1e-6), self.ppf(1-1e-6), 1000)
-
-        self.mean = jnp.trapezoid(x * jnp.array([self.pdf(_x) for _x in x]), x)
-
+        self.mean = self.loc + self.scale * self.a / (self.a + self.b)
         self.median = self.ppf(0.5)
 
     @partial(jax.jit, static_argnums=(0,))
@@ -274,7 +271,7 @@ class beta():
         t = jnp.exp(a1 * jnp.log(x) + b1 * jnp.log(1.0 - x) + afac)
         u = err/t
         tmp = u * (a1 / x - b1 / (1.0 - x))
-        t = u/(1.0 - 0.5 * jnp.clip(tmp, a_max=1.0))
+        t = u/(1.0 - 0.5 * jnp.clip(tmp, None, 1.0))
         x -= t
         x = jnp.where(x <= 0., 0.5 * (x + t), x)
         x = jnp.where(x >= 1., 0.5 * (x + t + 1.), x)
@@ -313,7 +310,7 @@ class beta():
 
         ERROR = 1e-8
 
-        p = jnp.clip(p, a_min=0., a_max=1.)
+        p = jnp.clip(p, 0., 1.)
 
         x = jnp.where(jnp.logical_or(p <= 0.0, p >= 1.), p, self.compute_x(p, a, b))
 
@@ -430,10 +427,7 @@ class uniform():
     def _set_stdatt(self):
         """ Set mean and median for the distribution
         """
-        x = jnp.linspace(self.ppf(1e-6), self.ppf(1-1e-6), 1000)
-
-        self.mean = jnp.trapezoid(x * jnp.array([self.pdf(_x) for _x in x]), x)
-
+        self.mean = self.a + 0.5 * self.scale
         self.median = self.ppf(0.5)
 
     @partial(jax.jit, static_argnums=(0,))
@@ -563,10 +557,7 @@ class normal():
     def _set_stdatt(self):
         """ Set mean and median for the distribution
         """
-        x = jnp.linspace(self.ppf(1e-6), self.ppf(1-1e-6), 1000)
-
-        self.mean = jnp.trapezoid(x * jnp.array([self.pdf(_x) for _x in x]), x)
-
+        self.mean = self.loc
         self.median = self.ppf(0.5)
     
     @partial(jax.jit, static_argnums=(0,))
@@ -675,10 +666,7 @@ class truncsine():
     def _set_stdatt(self):
         """ Set mean and median for the distribution
         """
-        x = jnp.linspace(self.ppf(1e-6), self.ppf(1-1e-6), 1000)
-
-        self.mean = jnp.trapezoid(x * jnp.array([self.pdf(_x) for _x in x]), x)
-
+        self.mean = 1.0
         self.median = self.ppf(0.5)
  
     @partial(jax.jit, static_argnums=(0,))

@@ -1,6 +1,6 @@
 """
-The l20models module contains the model used to compute the l=0 mode frequencies. This 
-currently only contains the asymptotic for p-modes.
+The MSmodels module contains the model used for main sequence mode identification. This
+fits the asymptotic l=0, 1, and 2 p-mode ridges at the same time.
 """
 
 import jax
@@ -12,9 +12,9 @@ from pbjam.DR import PCA
 import pbjam.distributions as dist 
 jax.config.update('jax_enable_x64', True)
 
-class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
+class Asyl021model(samplers.DynestySampling, jar.generalModelFuncs):
     """
-    A class for constructing the l20 model using the asymptotic relation for p-modes.
+    A class for constructing the main-sequence model using the asymptotic relation for p-modes.
 
     Parameters
     ----------
@@ -33,7 +33,8 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
     PCAdims : int
         Number of dimensions for PCA.
     vis : dict, optional
-        Dictionary of visibility ratios for mode power given as V_{l}/V_{l=0}. Default is {'V20': 0.71}.
+        Dictionary of visibility ratios for mode power given as V_{l}/V_{l=0}.
+        Default is {'V20': 0.71, 'V10': 1.22}.
     priorPath : str, optional
         Path to prior information. If None, assumes it is in the pbjam/data directory.
 
@@ -50,12 +51,12 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
     ndims : int
         Number of parameters in the model.
     ell : ndarray
-        Array of angular degrees of the modes (l=0 and l=2).
+        Array of angular degrees of the modes (l=0, l=1, and l=2).
     emm : ndarray
         Array of azimuthal orders of modes (fixed at m=0 but this may change in the future).
     """
 
-    def __init__(self, f, s, obs, addPriors, N_p, PCAsamples, PCAdims, vis={'V20': 0.71}, priorPath=None,
+    def __init__(self, f, s, obs, addPriors, N_p, PCAsamples, PCAdims, vis={'V20': 0.71, 'V10': 1.22}, priorPath=None,
                  selectivePrior=True, selectivePriorN=10000, selectivePriorMin=100,
                  selectivePriorSigma=3, selectivePriorSeed=None):
         
@@ -64,8 +65,8 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
  
         self.Nyquist = self.f[-1]
 
-        modelParLabels = ['dnu', 'numax', 
-                          'eps_p', 'd02', 
+        modelParLabels = ['dnu', 'numax',
+                          'eps_p', 'd01', 'd02',
                           'alpha_p', 'env_width',
                           'env_height', 'mode_width', 
                           'teff', 'bp_rp', 
@@ -91,9 +92,9 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
  
         self.setAddObs(keys=['numax', 'dnu', 'teff', 'bp_rp'])
 
-        self.ell = np.append(np.zeros(self.N_p), np.zeros(self.N_p) + 2)
+        self.ell = np.append(np.append(np.zeros(self.N_p), np.zeros(self.N_p) + 2), np.ones(self.N_p))
         
-        self.emm = np.zeros(2*self.N_p)
+        self.emm = np.zeros(3*self.N_p)
 
         self._makeEmpties()
 
@@ -195,11 +196,11 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
        
     def model(self, thetaU):
         """
-        Computes the model spectrum by combining the l20 mode pairs and background components.
+        Computes the model spectrum by combining the l=0,1,2 modes and background components.
 
         Notes
         -----
-        The l20 model is defined based on the SNR ratio of the modes, and so is multiplied onto the
+        The mode model is defined based on the SNR ratio of the modes, and so is multiplied onto the
         background model (instead of being added as is usually the case.)
 
         Parameters
@@ -215,6 +216,9 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         
         # l=2,0
         modes, _, _ = self.add20Pairs(**thetaU)
+
+        # l=1
+        modes += self.add1Modes(**thetaU)
         
         # Background
         bkg = self.background(thetaU)
@@ -275,6 +279,34 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
                 modes += jar.lor(self.f, f, H, mode_width)
 
         return modes, nu0_p, n_p
+
+    def add1Modes(self, d01, mode_width, nurot_e, inc, **kwargs):
+        """
+        Adds l=1 p-mode triplets to the spectrum.
+
+        The l=1 frequencies follow the main-sequence asymptotic relation used
+        by :class:`pbjam.l1models.Asyl1model`, where ``nu1 = nu0 + d01``.
+        """
+
+        nu0_p, _ = self.asymptotic_nu_p(**kwargs)
+
+        nu1_p = nu0_p + d01
+
+        Hs1 = self.vis['V10'] * jar.envelope(nu1_p, **kwargs)
+
+        modes = jnp.zeros_like(self.f)
+
+        for n in range(self.N_p):
+
+            for m in [-1, 0, 1]:
+
+                H = Hs1[n] * jar.visell1(abs(m), inc)
+
+                f = nu1_p[n] + m * nurot_e
+
+                modes += jar.lor(self.f, f, H, mode_width)
+
+        return modes
     
     def unpackParams(self, theta): 
         """ Put the parameters in theta in a dictionary.
@@ -411,15 +443,15 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
                   'enn': np.array([]),
                   'emm': self.emm,
                   'zeta': np.array([]),
-                  'summary': {'freq'  : np.array([]).reshape((2, 0)), 
-                              'height': np.array([]).reshape((2, 0)), 
+                  'summary': {'freq'  : np.array([]).reshape((2, 0)),
+                              'height': np.array([]).reshape((2, 0)),
                               'width' : np.array([]).reshape((2, 0)),
-                              'rotAsym': np.zeros((2, 2*self.N_p))
+                              'rotAsym': np.zeros((2, 3*self.N_p))
                              },
                   'samples': {'freq'  : np.array([]).reshape((N, 0)),
-                              'height': np.array([]).reshape((N, 0)), 
-                              'width' : np.array([]).reshape((N, 0)), 
-                              'rotAsym' : np.zeros((N, 2*self.N_p))
+                              'height': np.array([]).reshape((N, 0)),
+                              'width' : np.array([]).reshape((N, 0)),
+                              'rotAsym' : np.zeros((N, 3*self.N_p))
                              },
                 }
         
@@ -466,5 +498,24 @@ class Asyl20model(samplers.DynestySampling, jar.generalModelFuncs):
         # Widths
         W2_samps = np.tile(smp['mode_width'], np.shape(nu2_samps)[1]).reshape((nu2_samps.shape[1], nu2_samps.shape[0])).T
         jar.modeUpdoot(result, W2_samps, 'width', self.N_p)
+
+        # l=1
+        result['enn'] = np.append(result['enn'], np.zeros(self.N_p) - 1)
+        result['zeta'] = np.append(result['zeta'], np.zeros(self.N_p))
+
+        # Frequencies
+        nu1_samps = np.array([nu0_samps[i, :] + smp['d01'][i] for i in range(N)])
+        jar.modeUpdoot(result, nu1_samps, 'freq', self.N_p)
+
+        # Heights
+        H1_samps = self.vis['V10'] * np.array([jenvelope(nu1_samps[i, :],
+                                                            smp['env_height'][i],
+                                                            smp['numax'][i],
+                                                            smp['env_width'][i]) for i in range(N)])
+        jar.modeUpdoot(result, H1_samps, 'height', self.N_p)
+
+        # Widths
+        W1_samps = np.tile(smp['mode_width'], np.shape(nu1_samps)[1]).reshape((nu1_samps.shape[1], nu1_samps.shape[0])).T
+        jar.modeUpdoot(result, W1_samps, 'width', self.N_p)
   
         return result
