@@ -199,7 +199,7 @@ class beta():
    
         T = jax.lax.lt(_x, 0.) | jax.lax.lt(1., _x)  
          
-        y = jax.lax.cond(T, lambda : -jnp.inf, lambda : _x**self.am1 * (1 - _x)**self.bm1)
+        y = jax.lax.cond(T, lambda : 0., lambda : _x**self.am1 * (1 - _x)**self.bm1)
                 
         if norm:
             return y * self.fac
