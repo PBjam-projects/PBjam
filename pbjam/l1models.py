@@ -252,8 +252,8 @@ class Asyl1model(samplers.DynestySampling, commonFuncs):
 
         _obs = {x: jar.to_log10(*self.obs[x]) for x in self.obs.keys() if x in ['numax', 'dnu', 'teff']}
          
-        for key in ['bp_rp']:
-            _obs[key] = self.obs[key]
+        if 'bp_rp' in self.obs:
+            _obs['bp_rp'] = self.obs['bp_rp']
 
         self.DR = PCA(_obs, ['d01'], self.priorPath, self.PCAsamples, selectLabels=['numax', 'dnu', 'teff'], dropNansIn='Not all') 
         
@@ -563,8 +563,8 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
  
         _obs = {x: jar.to_log10(*self.obs[x]) for x in self.obs.keys() if x in ['numax', 'dnu', 'teff']}
          
-        for key in ['bp_rp']:
-            _obs[key] = self.obs[key]
+        if 'bp_rp' in self.obs:
+            _obs['bp_rp'] = self.obs['bp_rp']
         
 
         # The errors are only used to weight the different selection labels. So we enflate errors on dnu and numax slightly so Teff doesn't become insignificant. 
@@ -1081,8 +1081,8 @@ class RGBl1model(samplers.DynestySampling, commonFuncs):
 
         _obs = {x: jar.to_log10(*self.obs[x]) for x in self.obs.keys() if x in ['numax', 'dnu', 'teff']}
          
-        for key in ['bp_rp']:
-            _obs[key] = self.obs[key]
+        if 'bp_rp' in self.obs:
+            _obs['bp_rp'] = self.obs['bp_rp']
          
         self.DR = PCA(_obs, self.pcaLabels, self.priorPath, self.PCAsamples, selectLabels=['numax', 'dnu', 'teff'], dropNansIn='Not all') 
          

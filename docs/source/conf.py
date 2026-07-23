@@ -4,10 +4,22 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
+import os
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+# nbsphinx uses the Pandoc command-line executable while converting notebooks.
+# The docs extra supplies pypandoc_binary so builds do not depend on a system
+# Pandoc installation.
+try:
+    import pypandoc
+except ImportError:
+    pass
+else:
+    pandoc_dir = str(Path(pypandoc.get_pandoc_path()).parent)
+    os.environ["PATH"] = pandoc_dir + os.pathsep + os.environ.get("PATH", "")
 
 try:
     release = package_version("pbjam")
@@ -52,7 +64,7 @@ exclude_patterns = [
 templates_path = ["_templates"]
 source_suffix = {
     ".rst": "restructuredtext",
-    ".ipynb": "nbsphinx",
+    ".ipynb": "jupyter_notebook",
 }
 root_doc = "index"
 language = "en"

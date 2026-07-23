@@ -8,7 +8,7 @@ If you haven't already,  `create a GitHub account <https://github.com/join?sourc
 
 **A. In a web browser:**
 
-1. Go to the `main PBjam repository <https://github.com/grd349/PBjam>`_ (repo) and press the Fork button in the top right corner. This copies the current state of the main repo to your GitHub account. If the main repo is updated, your copy will **not** change and vice versa.
+1. Go to the `main PBjam repository <https://github.com/PBjam-projects/PBjam>`_ (repo) and press the Fork button in the top right corner. This copies the current state of the main repo to your GitHub account. If the main repo is updated, your copy will **not** change and vice versa.
    
 2. From your copy of the repo (called a fork), press Clone, and then copy the repo link. 
 

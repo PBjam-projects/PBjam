@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pbjam.peakbagging import basePeakbag, peakbag
+from pbjam.peakbagging import basePeakbag, jointRotInc, peakbag
 
 
 def bare_peakbag():
@@ -215,3 +215,30 @@ def test_doppler_correction_is_unity_without_rv_uncertainty():
     obj.RV = (25.0, 0.0)
 
     assert np.array_equal(obj.dopplerRVCorrection(4), np.ones(4))
+
+
+def test_joint_rotation_kde_uses_scipy_density_estimator():
+    rng = np.random.default_rng(42)
+
+    class DummyInstance:
+        def __init__(self):
+            self.samples = rng.normal(size=(100, 3))
+            self.priors = {
+                "nurot_e": object(),
+                "nurot_c": object(),
+                "inc": object(),
+            }
+
+        def unpackSamples(self, samples):
+            return {
+                "nurot_e": samples[:, 0],
+                "nurot_c": samples[:, 1],
+                "inc": samples[:, 2],
+            }
+
+    pb = type("Peakbag", (), {"pbInstances": [DummyInstance(), DummyInstance()]})()
+
+    model = jointRotInc(pb, NKDE=50, bw=0.1)
+
+    assert len(model.kdes) == 2
+    assert all(np.isfinite(kde.pdf(np.zeros(3))).all() for kde in model.kdes)

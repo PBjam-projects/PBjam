@@ -1,12 +1,12 @@
 API reference
 =============
 
-PBjam has three main public entry points:
+PBjam has four main public entry points:
 
 * :class:`pbjam.core.session` coordinates analyses for one or more targets.
 * :class:`pbjam.core.star` coordinates the analysis of a single target.
-* :class:`pbjam.modeID.modeID` and the classes in
-  :mod:`pbjam.peakbagging` provide lower-level interfaces for custom pipelines.
+* :class:`pbjam.modeID.modeID` performs mode identification.
+* :class:`pbjam.peakbagging.peakbag` performs detailed peakbagging.
 
 The remaining modules contain model implementations, probability distributions,
 input/output utilities, plotting helpers, and samplers used by those interfaces.

@@ -523,11 +523,6 @@ def updatePrior(ID, R, addObs):
 class constants:
     """
     A dataclass for storing astrophysical constants and conversion factors.
-
-    Attributes
-    ----------
-    nu_to_omega : float
-        Conversion factor from frequency (muHz) to angular frequency (radians/muHz). Default is `2 * jnp.pi / 1e6`.
     """
 
     # Teff0: float = 5777 # K

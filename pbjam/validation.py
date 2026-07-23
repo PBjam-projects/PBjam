@@ -9,7 +9,6 @@ import scipy.stats as st
 import pbjam.distributions as dist
 import numpy as np
 import scipy.spatial.distance as ssd
-# import statsmodels.api as sm
 
 
 class validate():

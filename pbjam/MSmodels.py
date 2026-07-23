@@ -187,10 +187,14 @@ class Asyl021model(samplers.DynestySampling, jar.generalModelFuncs):
  
         _obs = {x: jar.to_log10(*self.obs[x]) for x in self.obs.keys() if x in ['numax', 'dnu', 'teff']}
          
-        for key in ['bp_rp']:
-            _obs[key] = self.obs[key]
+        if 'bp_rp' in self.obs:
+            _obs['bp_rp'] = self.obs['bp_rp']
          
-        self.DR = PCA(_obs, self.pcaLabels, self.priorPath, self.PCAsamples, selectLabels=['numax', 'dnu', 'teff', 'bp_rp']) 
+        selectLabels = ['numax', 'dnu', 'teff']
+        if 'bp_rp' in _obs:
+            selectLabels.append('bp_rp')
+
+        self.DR = PCA(_obs, self.pcaLabels, self.priorPath, self.PCAsamples, selectLabels=selectLabels)
 
         self.DR.fit_weightedPCA(self.PCAdims)
 

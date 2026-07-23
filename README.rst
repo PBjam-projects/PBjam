@@ -5,35 +5,81 @@ PBjam 2
 **Peakbagging made easy**
 
 .. image:: https://img.shields.io/badge/GitHub-PBjam-green.svg
-    :target: https://github.com/grd349/PBjam
+    :target: https://github.com/PBjam-projects/PBjam
 .. image:: https://readthedocs.org/projects/pbjam/badge/?version=latest
     :target: https://pbjam.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
-.. image:: http://img.shields.io/badge/license-MIT-blue.svg?style=flat
-    :target: https://github.com/grd349/PBjam/blob/master/LICENSE
-.. image:: https://img.shields.io/github/issues-closed/grd349/PBjam.svg
-    :target: https://github.com/grd349/PBjam/issues
+.. image:: https://img.shields.io/badge/license-MIT-blue.svg?style=flat
+    :target: https://github.com/PBjam-projects/PBjam/blob/master/LICENSE
+.. image:: https://img.shields.io/github/issues-closed/PBjam-projects/PBjam.svg
+    :target: https://github.com/PBjam-projects/PBjam/issues
 .. image:: https://badge.fury.io/py/pbjam.svg
     :target: https://badge.fury.io/py/pbjam
-.. image:: http://img.shields.io/badge/arXiv-2012.00580-B31B1B.svg
+.. image:: https://img.shields.io/badge/arXiv-2012.00580-B31B1B.svg
     :target: https://arxiv.org/abs/2012.00580
 
-PBjam is toolbox for analyzing the oscillation spectra of solar-like oscillators. This involves two main parts: identifying a set of modes of interest in a spectrum of oscillations, and accurately modeling those modes to measure their frequencies.
+PBjam is a Bayesian toolkit for analysing the oscillation spectra of
+solar-like oscillators. It first identifies modes in a power-density spectrum,
+then fits the individual peaks to measure their frequencies and other
+properties.
 
-The mode identification works by fitting the asymptotic relation for p-modes to the l=2,0 pairs, which is followed by a applying selection of models for fitting the l=1 modes where each model is suitable for different stages of evolution.
-The process relies on of large set of previous observations of the model parameters, which are then used to construct a prior distribution to inform the sampling. The observations have been gathered from the Kepler, K2 and TESS missions, and expanding it to improve accuracy is an on-going process. 
-The ``runl20model`` and ``runl1model`` mode-identification calls accept a ``loglikelihoodMultiplier`` argument, defaulting to ``1.0``, which scales the final log-likelihood value passed to the nested sampler.
+For main-sequence stars, mode identification fits the asymptotic
+``l=0,1,2`` p-mode pattern jointly. For subgiants and red giants, PBjam first
+fits the background and ``l=2,0`` pairs, then selects an evolutionary-stage
+model for the ``l=1`` modes. Priors are informed by previous Kepler, K2 and
+TESS observations distributed with the package.
 
-Modeling the modes, or 'peakbagging', is done using the a nested sampling or MCMC algorithm, where Lorentzian profiles are fit to each of the identified modes, with much fewer constraints than during the mode ID process. This allows for a more accurate model of the spectrum of frequencies than the heavily parameterized models like the asymptotic relations.
+Detailed peakbagging uses nested sampling or MCMC to fit Lorentzian profiles
+with fewer constraints than the mode-identification models.
 
-To get started with PBjam please see the docs at `pbjam.readthedocs.io <http://pbjam.readthedocs.io/>`_.
+Installation
+------------
+
+PBjam requires Python 3.10 or newer::
+
+    python -m pip install pbjam
+
+Quick start
+-----------
+
+The high-level :class:`pbjam.session` interface accepts a power-density
+spectrum as a two-row array. Frequencies must be in microhertz, and each
+observable is supplied as a ``(value, uncertainty)`` pair::
+
+    import numpy as np
+    import pbjam
+
+    obs = {
+        "numax": (2204.0, 100.0),
+        "dnu": (103.2, 0.54),
+        "teff": (6140.0, 77.0),
+        # Optional, but improves prior selection when available:
+        "bp_rp": (0.700, 0.050),
+    }
+
+    run = pbjam.session(
+        "my-star",
+        obs,
+        spectrum=np.vstack((frequency, power_density)),
+    )
+    run()
+
+    star = run.stars[0]
+    mode_id_result = star.modeID.result
+    peakbag_result = star.peakbag.result
+
+PBjam can also download light curves through Lightkurve or compute a spectrum
+from a supplied time series. See the `documentation
+<https://pbjam.readthedocs.io/>`_ and example notebooks for those workflows.
 
 .. inclusion_marker0
 
 
 Contributing
 ------------
-If you want to raise an issue or contribute code to PBjam, see the `guidelines on contributing <https://github.com/grd349/PBjam/blob/master/CONTRIBUTING.rst>`_.
+If you want to raise an issue or contribute code to PBjam, see the
+`contribution guidelines
+<https://github.com/PBjam-projects/PBjam/blob/master/CONTRIBUTING.rst>`_.
 
 Authors
 -------
@@ -55,6 +101,12 @@ Main Contributors                                     Chaos Engineers           
 
 Acknowledgements
 ----------------
-If you use PBjam in your work please cite the one of the PBjam papers (`Paper I Nielsen et al. 2021 <https://ui.adsabs.harvard.edu/abs/2021AJ....161...62N/abstract>`_,  `Paper II Nielsen et al. 2023 <https://ui.adsabs.harvard.edu/abs/2023A%26A...676A.117N/abstract>`_ ), and if possible provide links to the `GitHub repository <https://github.com/grd349/PBjam>`_. 
+If you use PBjam in your work, please cite one of the PBjam papers
+(`Paper I: Nielsen et al. 2021
+<https://ui.adsabs.harvard.edu/abs/2021AJ....161...62N/abstract>`_,
+`Paper II: Nielsen et al. 2023
+<https://ui.adsabs.harvard.edu/abs/2023A%26A...676A.117N/abstract>`_) and,
+if possible, link to the `GitHub repository
+<https://github.com/PBjam-projects/PBjam>`_.
 
 We encourage users to also cite the packages and publications that PBjam makes use of.  

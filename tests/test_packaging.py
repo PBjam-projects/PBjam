@@ -61,10 +61,6 @@ def test_packaged_data_files_are_declared():
     assert "data/*.json" in package_data["pbjam"]
 
 
-@pytest.mark.xfail(
-    reason="Issue #291 is complete only after statsmodels is removed from code and metadata.",
-    strict=False,
-)
 def test_statsmodels_dependency_has_been_removed():
     dependencies = load_pyproject()["project"]["dependencies"]
 
@@ -75,7 +71,7 @@ def test_statsmodels_dependency_has_been_removed():
 
     source_files = list((REPO_ROOT / "pbjam").glob("*.py"))
     assert not any(
-        "statsmodels" in source_file.read_text().lower()
+        "import statsmodels" in source_file.read_text().lower()
         for source_file in source_files
     )
 

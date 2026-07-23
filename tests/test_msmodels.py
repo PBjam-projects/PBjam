@@ -116,6 +116,42 @@ def test_model_combines_three_ridges_then_applies_background():
     assert np.array_equal(result, np.array([60.0, 160.0]))
 
 
+def test_setup_dr_allows_missing_bp_rp(monkeypatch):
+    calls = {}
+
+    class DummyPCA:
+        def __init__(self, obs, varLabels, fName, nSamples, selectLabels):
+            calls["obs"] = obs
+            calls["selectLabels"] = selectLabels
+
+        def fit_weightedPCA(self, dimensions):
+            calls["dimensions"] = dimensions
+
+        def setLatentNormalPrior(self):
+            return None
+
+        def refinePriorByObservables(self, **kwargs):
+            return None
+
+    monkeypatch.setattr(MSmodels, "PCA", DummyPCA)
+    model = Asyl021model.__new__(Asyl021model)
+    model.obs = {
+        "numax": (100.0, 5.0),
+        "dnu": (10.0, 0.5),
+        "teff": (5777.0, 50.0),
+    }
+    model.pcaLabels = ["numax", "dnu"]
+    model.priorPath = "prior.csv"
+    model.PCAsamples = 20
+    model.PCAdims = 2
+    model.selectivePrior = False
+
+    model.setupDR()
+
+    assert calls["selectLabels"] == ["numax", "dnu", "teff"]
+    assert "bp_rp" not in calls["obs"]
+
+
 def test_unpack_params_uses_prior_order_and_log_scaling():
     model = Asyl021model.__new__(Asyl021model)
     model.DR = SimpleNamespace(

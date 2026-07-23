@@ -124,6 +124,42 @@ def test_model_multiplies_mode_snr_by_background():
     assert np.array_equal(result, np.array([10.0, 21.0]))
 
 
+def test_setup_dr_allows_missing_bp_rp(monkeypatch):
+    calls = {}
+
+    class DummyPCA:
+        def __init__(self, obs, varLabels, fName, nSamples, selectLabels):
+            calls["obs"] = obs
+            calls["selectLabels"] = selectLabels
+
+        def fit_weightedPCA(self, dimensions):
+            calls["dimensions"] = dimensions
+
+        def setLatentNormalPrior(self):
+            return None
+
+        def refinePriorByObservables(self, **kwargs):
+            return None
+
+    monkeypatch.setattr(l20models, "PCA", DummyPCA)
+    model = Asyl20model.__new__(Asyl20model)
+    model.obs = {
+        "numax": (100.0, 5.0),
+        "dnu": (10.0, 0.5),
+        "teff": (5777.0, 50.0),
+    }
+    model.pcaLabels = ["numax", "dnu"]
+    model.priorPath = "prior.csv"
+    model.PCAsamples = 20
+    model.PCAdims = 2
+    model.selectivePrior = False
+
+    model.setupDR()
+
+    assert calls["selectLabels"] == ["numax", "dnu", "teff"]
+    assert "bp_rp" not in calls["obs"]
+
+
 def test_unpack_params_applies_log_scaling_in_sampling_order():
     model = Asyl20model.__new__(Asyl20model)
     model.DR = SimpleNamespace(

@@ -24,8 +24,8 @@ dependencies = ["numpy>=2.2.4",
                 "astropy>=6.1",
                 "corner>=2.2.3",
                 "dynesty>=2.1.5",
-                "jax>=0.5.2",
-                "jaxlib>=0.5.1",
+                "jax>=0.4.38",
+                "jaxlib>=0.4.38",
                 "emcee>=3.1.6",
                 "tqdm>=4.67.1",
                 ]
@@ -43,11 +43,13 @@ Repository = "https://github.com/PBjam-projects/PBjam"
 
 [project.optional-dependencies]
 test = ["pytest",
+        "setuptools>=61.0",
         ]
 docs = ["sphinx",
         "sphinx-rtd-theme",
         "nbsphinx",
         "ipykernel",
+        "pypandoc_binary",
         ]
 
 [tool.setuptools.package-data]

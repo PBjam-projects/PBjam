@@ -11,7 +11,6 @@ import jax
 import numpy as np
 import jax.scipy.special as jsp
 from pbjam import jar
-# import statsmodels.api as sm
 import scipy.stats as st
 
 def makeDistObject(data, **kwargs):

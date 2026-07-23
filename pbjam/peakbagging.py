@@ -11,7 +11,6 @@ from pbjam.plotting import plotting
 import pbjam.distributions as dist
 from pbjam import jar, samplers
 import numpy as np
-import statsmodels.api as sm
 from tqdm import tqdm
 import scipy.stats as st
 
@@ -21,11 +20,10 @@ class peakbag(plotting):
     desired number of slices which can be peakbagged independently, which tends to be
     faster than fitting the whole spectrum at once. 
 
-    The default setting is to divide the spectrum into roughly the number of radial orders
-    provided in the input frequency list. However, checks are performed to make sure closely
-    spaced modes aren't split so any potential correlation is correctly accounted for. The 
-    number of slices may therefore be less than the requested if it is not possible to separate
-    the modes.
+    By default the selected frequency range is fitted as one interval. Set
+    ``slice=True`` to divide it into approximately one slice per radial order.
+    Checks are performed to make sure closely spaced modes are not split, so the
+    number of slices may be smaller than requested.
 
     The slicing is done by a K-means clustering algorithm, where clusters are then merged if they
     split up for example an l=2,0 mode pair.  
@@ -65,10 +63,15 @@ class peakbag(plotting):
     RV : array-like, optional
         Radial velocity and associated error of the star in km/s. Default is None.
     slice : bool or int, optional
-        Controls whether the spectrum is divided into independently fitted slices.
-        The exact interpretation is handled by the slicing logic. 
+        Whether to divide the spectrum into independently fitted slices. Default
+        is ``False``.
+    dipoleMask : bool, optional
+        Whether to mask spectrum regions dominated by dipole modes. If ``None``,
+        masking is enabled automatically when no ``l=1`` modes are supplied.
     snrInput : bool, optional
         Flag indicating if the input is signal-to-noise ratio (SNR) spectrum. Default is False.
+    samplerType : {'emcee', 'dynesty'}, optional
+        Sampling backend used for each peakbagging interval. Default is ``'emcee'``.
     **kwargs : dict
         Additional keyword arguments.
 
@@ -837,9 +840,8 @@ class jointRotInc(samplers.DynestySampling):
  
             samplesU = self.insts[i].unpackSamples(self.insts[i].samples[indx, :])
 
-            kde = sm.nonparametric.KDEMultivariate(data=[samplesU[lbl] for lbl in self.labels], 
-                                                   var_type='c'*self.ndims, 
-                                                   bw=[bw]*self.ndims)
+            data = np.vstack([samplesU[lbl] for lbl in self.labels])
+            kde = st.gaussian_kde(data, bw_method=bw)
 
             self.kdes.append(kde)
  
@@ -927,7 +929,8 @@ class jointRotInc(samplers.DynestySampling):
         lnL = 0  
         
         for kde in self.kdes:
-            lnL += jnp.log(kde.pdf(theta)) - lnPrior 
+            density = kde.pdf(theta).item()
+            lnL += jnp.log(density) - lnPrior
     
         lnP = lnL + lnPrior  
  

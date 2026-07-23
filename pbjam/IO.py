@@ -1,7 +1,7 @@
 """
 The IO module contains the primary methods for PBjam to process either a time
 series or power density spectrum from the user or an automatically downloaded 
-data set from the Mikulski Archive for Spact Telescopes (https://archive.stsci.edu/home) 
+data set from the Mikulski Archive for Space Telescopes (https://archive.stsci.edu/home)
 via the Lightkurve package.
 """
 
@@ -25,31 +25,44 @@ class psd():
 
     Notes
     -----
-    The Cython implementation is very slow for time series longer than about 1 month 
-    (array size of 1e5). The Fast implementation is similar to the an FFT, but at a 
-    very slight loss of accuracy. There appears to be a slight increasing slope with 
+    The Cython implementation is very slow for time series longer than about one month
+    (array size of 1e5). The fast implementation is similar to an FFT, but at a
+    very slight loss of accuracy. There appears to be a slight increasing slope with
     frequency toward the Nyquist frequency.
 
     The adjustments to the frequency resolution, due to gaps, performed in the KASOC 
     filter may not be beneficial the statistics we use in the detection algorithm.  
-    This has not been thuroughly tested yet though. So recommend leaving it in, but 
+    This has not been thoroughly tested. We recommend leaving it enabled, but
     with a switch to turn it off for testing.
 
     Parameters
     ----------
+    ID : str
+        Target identifier. It is passed to Lightkurve when data are downloaded.
+    lk_kwargs : dict, optional
+        Search options passed to :func:`lightkurve.search_lightcurve`.
     time : array
-        Time stamps of the time series.
+        Time stamps of the time series, normally in days.
     flux : array
-        Flux values of the time series.
-    flux_error : array
+        Flux values of the time series, normally in parts per million.
+    flux_err : array, optional
         Flux value errors of the time series.
+    useWeighted : bool, optional
+        Use ``flux_err`` as Lomb--Scargle weights. Default is ``False``.
+    downloadDir : str or pathlib.Path, optional
+        Directory used to cache Lightkurve downloads.
     fit_mean : bool, optional
         Keyword for Astropy.LombScargle. If True, uses the generalized Lomb-Scargle 
         approach and fits with a floating mean. Default is False.
-    timeConversion : float
+    timeConversion : float, optional
         Factor to convert the time series such that it is in seconds. Note, all stored 
         time values, e.g. cadence or duration, are kept in the input units. Default is 
         86400 to convert from days to seconds.
+    badIdx : array-like of bool, optional
+        Additional time-series samples to exclude.
+    numax : float, optional
+        Frequency of maximum oscillation power in microhertz. When downloading,
+        it is used to choose the light-curve flattening window.
 
     Attributes
     ----------
@@ -72,7 +85,7 @@ class psd():
     freqHz : array, float
         Frequency range in Hz.
     freq : array, float
-        Freqeuency range in muHz.
+        Frequency range in microhertz.
     normfactor : float
         Normalization factor to ensure the power conforms with Parseval.
     power : array, float
@@ -125,11 +138,9 @@ class psd():
             equates to zero-padding when using the FFT.
         nyquist_factor : float
             Factor by which to extend the spectrum past the Nyquist frequency.
-            The default is 10% greater than the true Nyquist frequency. We use
-            this to get a better handle on the background level at high
-            frequency.
+            The default, ``1.0``, stops at the Nyquist frequency.
         method : str
-            The recommended methods are either `fast' or `Cython'. Cython is
+            The recommended methods are either ``'fast'`` or ``'cython'``. Cython is
             a bit more accurate, but significantly slower.
         """
 
@@ -183,13 +194,13 @@ class psd():
 
         Notes
         -----
-        - The method first initializes the time (`t`) and window function (`w`) arrays.
-        - It then identifies gaps in the time series larger than `cadenceMargin * self.dt` 
-        and fills them with zeros in the window function.
-        - The method ensures the length of the time series does not exceed a break counter 
-        of 100 to avoid infinite loops.
-        - Padding is added at the start and end of the time series if `tmin` or `tmax` are 
-        specified and exceed the current bounds of `t`.
+        - The method first initializes the time (``t``) and window function
+          (``w``) arrays.
+        - It identifies gaps larger than ``cadenceMargin * self.dt`` and fills
+          them with zeros in the window function.
+        - A break counter of 100 prevents infinite loops.
+        - Padding is added at the start and end if ``tmin`` or ``tmax`` exceed
+          the current bounds of ``t``.
         """
 
         if tmin is None:
@@ -554,4 +565,3 @@ def _getPriorPath():
     """
     
     return os.path.join(*[PACKAGEDIR, 'data', 'prior_data.csv'])
-

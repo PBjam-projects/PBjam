@@ -1,16 +1,33 @@
 User Guide
 ==========
 
-PBjam is intended to be a user-friendly peakbagging tool. The most straightforward way of using PBjam is through the :class:`~pbjam.core.session` class. This class handles the organization of the inputs, the mode ID, peakbagging and output. The inputs to the session class can take a variety of forms which are shown in the examples below. 
+PBjam is intended to be a user-friendly peakbagging tool. The most
+straightforward interface is :class:`~pbjam.core.session`, which organises the
+inputs and runs mode identification followed by peakbagging. Results are
+available on each session's :class:`~pbjam.core.star` objects.
+
+Inputs and units
+----------------
+
+The required observables are ``numax`` and ``dnu`` in microhertz and ``teff``
+in kelvin. Each value is supplied with its uncertainty as a two-element
+sequence. ``bp_rp`` is optional, but improves selection of the empirical prior
+when available. A supplied spectrum must contain frequency in microhertz and
+power density; a supplied time series normally uses time in days and flux in
+parts per million.
 
 Session
 -------
-The :class:`~pbjam.core.session` class is the most straightforward way to analyze one or more stars with PBjam. It can automatically download the data and compute the power density spectrum, and then go through all the steps in the mode ID and peakbagging process. The `Session notebook <Examples/example-session.ipynb>`_ provides an example of how to use the :class:`~pbjam.core.session` class. 
+The :class:`~pbjam.core.session` class can analyse one or more stars. It accepts
+a supplied spectrum or time series, or can download light curves through
+Lightkurve before computing the power-density spectrum. The `Session notebook
+<Examples/example-session.ipynb>`_ demonstrates these forms.
  
 
 Star
 ----
-It's also possible to use the :class:`~pbjam.core.star` class to analyze single stars, mainly for use in custom scripts. The :class:`~pbjam.core.session` class is really just a fancy wrapper for the :class:`~pbjam.core.star` class.  
+The :class:`~pbjam.core.star` class runs the same workflow for one supplied
+power-density spectrum and is useful in custom scripts.
 
 The :class:`~pbjam.core.star` class is meant for more detailed control of the inputs for each star. The `Star notebook <Examples/example-star.ipynb>`_ shows a simple example of this. 
     
@@ -24,4 +41,8 @@ It is not strictly necessary to use either the :class:`~pbjam.core.session` or :
 
 Papers
 ------
-We have published a few papers on various bits. The `first paper <https://ui.adsabs.harvard.edu/abs/2021AJ....161...62N/abstract>`_ provides information mainly on the initial version of PBjam. The `second paper <https://ui.adsabs.harvard.edu/abs/2023A%26A...676A.117N/abstract>`_ discusses the method used to construct the prior probability densities that we now use in the latest version of PBjam. The latest paper (in prep.) focuses on how we construct the models for the l=1 modes.
+The `first paper
+<https://ui.adsabs.harvard.edu/abs/2021AJ....161...62N/abstract>`_ describes
+the initial version of PBjam. The `second paper
+<https://ui.adsabs.harvard.edu/abs/2023A%26A...676A.117N/abstract>`_ describes
+the empirical prior construction used by current releases.
