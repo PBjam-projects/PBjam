@@ -329,6 +329,20 @@ def _asFiniteArray(values):
 
     return arr[np.isfinite(arr)]
 
+def _usesMSModel(model):
+    """Return whether ``model`` currently uses the one-stage MS model."""
+
+    if not hasattr(model, 'MSmodel'):
+        return False
+
+    if not hasattr(model, 'l20model') and not hasattr(model, 'l1model'):
+        return True
+
+    return (
+        hasattr(model, 'MSresult')
+        and getattr(model, 'result', None) is model.MSresult
+    )
+
 def _getEchelleYlim(f, N_p, numax, dnu):
     """Estimate the lower frequency limit for an echelle plot."""
 
@@ -380,8 +394,81 @@ def _baseEchelle(f, s, N_p, numax, dnu, scale, **kwargs):
 
     return fig, ax
 
+def _ModeIDClassMSPriorEchelle(self, Nsamples, scale, colors, dnu=None,
+                               numax=None, **kwargs):
+    """Plot prior MS-model ridge locations on an echelle diagram."""
+
+    if dnu is None:
+        dnu = self.obs['dnu'][0]
+
+    if numax is None:
+        numax = self.obs['numax'][0]
+
+    fig, ax = _baseEchelle(
+        self.f,
+        self.s,
+        self.N_p,
+        numax,
+        dnu,
+        scale,
+        **kwargs,
+    )
+
+    model = self.MSmodel
+    junpack = jax.jit(model.unpackParams)
+    jptform = jax.jit(model.ptform)
+    jasymptotic = jax.jit(model.asymptotic_nu_p)
+
+    for _ in range(Nsamples):
+        u = np.random.uniform(0, 1, size=model.ndims)
+        theta = jptform(u)
+        thetaU = junpack(theta)
+
+        nu0, _ = jasymptotic(**thetaU)
+        mode_freqs = [
+            nu0,
+            nu0 + thetaU['d01'],
+            nu0 - thetaU['d02'],
+        ]
+
+        for freqs, ell in zip(mode_freqs, [0, 1, 2]):
+            smp_x, smp_y = _echellify_freqs(freqs, dnu)
+            ax.scatter(
+                smp_x,
+                smp_y,
+                alpha=0.05,
+                color=colors[ell],
+                s=100,
+            )
+
+    for ell in [0, 1, 2]:
+        ax.scatter(
+            np.nan,
+            np.nan,
+            alpha=1,
+            color=colors[ell],
+            s=100,
+            label=r'$\ell=$' + str(ell),
+        )
+
+    ax.set_xlim(0, dnu)
+    ax.legend(loc=1)
+
+    return fig, ax
+
 def _ModeIDClassPriorEchelle(self, Nsamples, scale, colors, dnu=None, numax=None, 
                              DPi1=None, eps_g=None, **kwargs):
+
+    if _usesMSModel(self):
+        return _ModeIDClassMSPriorEchelle(
+            self,
+            Nsamples=Nsamples,
+            scale=scale,
+            colors=colors,
+            dnu=dnu,
+            numax=numax,
+            **kwargs,
+        )
 
     if dnu is None:
         dnu = self.obs['dnu'][0]
@@ -546,7 +633,7 @@ def _ModeIDClassPostEchelle(self, Nsamples, colors, dnu=None, numax=None, **kwar
     #     axes = np.append(axes, ax)
     
     # Overplot gmode frequencies
-    if hasattr(self, 'l1model'):
+    if hasattr(self, 'l1model') and not _usesMSModel(self):
         if self.l1model.N_g > 0:        
             gmodes = True
 
@@ -702,15 +789,27 @@ def _baseSpectrum(ax, f, s, smoothness=0.1, alpha=0.6, xlim=[None, None], ylim=[
 
 def _makeBaseFrames(self):
 
-    if not hasattr(self, 'l20model'):
+    if _usesMSModel(self):
+        fig, ax = plt.subplots(3, 1, figsize=(16,18))
+
+        _baseSpectrum(ax[0], self.f, self.s)
+
+        _baseSpectrum(ax[1], self.f[self.sel], self.s[self.sel])
+
+        _baseSpectrum(
+            ax[2],
+            self.f[self.sel],
+            self.s[self.sel] / self.MSmodel.getMedianModel(),
+        )
+
+    elif not hasattr(self, 'l20model'):
         fig, ax = plt.subplots(2, 1, figsize=(16,18))
 
         _baseSpectrum(ax[0], self.f, self.s)
 
         _baseSpectrum(ax[1], self.f[self.sel], self.s[self.sel])
 
-
-    elif hasattr(self, 'l20model') and not hasattr(self, 'l1model'): # only l20 has been run
+    elif hasattr(self, 'l20model') and not hasattr(self, 'l1model'):
 
         fig, ax = plt.subplots(3, 1, figsize=(16,18))
 
@@ -718,8 +817,12 @@ def _makeBaseFrames(self):
 
         _baseSpectrum(ax[1], self.f[self.sel], self.s[self.sel])
 
-        _baseSpectrum(ax[2], self.f[self.sel], self.s[self.sel] / self.l20model.getMedianModel())
-    
+        _baseSpectrum(
+            ax[2],
+            self.f[self.sel],
+            self.s[self.sel] / self.l20model.getMedianModel(),
+        )
+
     elif hasattr(self, 'l20model') and hasattr(self, 'l1model'):
 
         fig, ax = plt.subplots(4, 1, figsize=(16,18))
@@ -728,40 +831,83 @@ def _makeBaseFrames(self):
 
         _baseSpectrum(ax[1], self.f[self.sel], self.s[self.sel])
 
-        _baseSpectrum(ax[2], self.f[self.sel], self.s[self.sel] / self.l20model.getMedianModel())
+        _baseSpectrum(
+            ax[2],
+            self.f[self.sel],
+            self.s[self.sel] / self.l20model.getMedianModel(),
+        )
 
-        _baseSpectrum(ax[3], self.f[self.sel], self.l20residual / self.l1model.getMedianModel())
-    
+        _baseSpectrum(
+            ax[3],
+            self.f[self.sel],
+            self.l20residual / self.l1model.getMedianModel(),
+        )
+
     else:
         raise ValueError('Unable to make plots')
-  
+
     ax[0].set_xlim(self.f.min(), self.f.max())
-    
+
     ax[0].set_yscale('log')
 
     ax[0].set_xscale('log')
-         
+
     for i in range(ax.shape[0]):
         ax[i].set_ylabel(r'PSD [$\mathrm{ppm}^2/\mu \rm Hz$]')
 
         if i > 0:
-            ax[i].set_xlim(self.f[self.sel].min(), 
-                        self.f[self.sel].max())
-            
+            ax[i].set_xlim(
+                self.f[self.sel].min(),
+                self.f[self.sel].max(),
+            )
+
         if i > 1:
             ax[i].set_ylabel(r'Residual')
 
     ax[-1].set_xlabel(r'Frequency ($\mu \rm Hz$)')
-   
+
     return fig, ax
 
 def _ModeIDClassPriorSpectrum(self, N):
-     
-    fig, ax = _makeBaseFrames(self)
- 
-    if hasattr(self, 'l20model'):
 
-        rint = np.random.randint(0, len(self.result['samples']['dnu']), size=N)
+    fig, ax = _makeBaseFrames(self)
+
+    if _usesMSModel(self):
+        junpack = jax.jit(self.MSmodel.unpackParams)
+        jmodel = jax.jit(self.MSmodel.model)
+        jptform = jax.jit(self.MSmodel.ptform)
+
+        for _ in range(N):
+            u = np.random.uniform(0, 1, size=self.MSmodel.ndims)
+            theta = jptform(u)
+            thetaU = junpack(theta)
+            mod = jmodel(thetaU)
+
+            ax[0].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
+            ax[1].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
+
+        ax[0].plot(
+            [-100, -100],
+            [-100, -100],
+            color='C3',
+            label='Prior samples',
+            alpha=1,
+        )
+        ax[1].plot(
+            [-100, -100],
+            [-100, -100],
+            color='C3',
+            label='Prior samples',
+            alpha=1,
+        )
+
+    elif hasattr(self, 'l20model'):
+
+        rint = np.random.randint(
+            0,
+            len(self.result['samples']['dnu']),
+            size=N,
+        )
 
         junpackl20 = jax.jit(self.l20model.unpackParams)
 
@@ -769,26 +915,37 @@ def _ModeIDClassPriorSpectrum(self, N):
 
         jptforml20 = jax.jit(self.l20model.ptform)
 
-        for k in rint:
-            
+        for _ in rint:
             u = np.random.uniform(0, 1, size=self.l20model.ndims)
-        
             theta = jptforml20(u)
-
             thetaU = junpackl20(theta)
-            
             mod = jmodell20(thetaU)
 
             ax[0].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
-
             ax[1].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
 
-        ax[0].plot([-100, -100], [-100, -100], color='C3', label='Prior samples', alpha=1)
-        ax[1].plot([-100, -100], [-100, -100], color='C3', label='Prior samples', alpha=1)
-    
-    if hasattr(self, 'l1model'):
+        ax[0].plot(
+            [-100, -100],
+            [-100, -100],
+            color='C3',
+            label='Prior samples',
+            alpha=1,
+        )
+        ax[1].plot(
+            [-100, -100],
+            [-100, -100],
+            color='C3',
+            label='Prior samples',
+            alpha=1,
+        )
 
-        rint = np.random.randint(0, len(self.result['samples']['d01']), size=N)
+    if hasattr(self, 'l1model') and not _usesMSModel(self):
+
+        rint = np.random.randint(
+            0,
+            len(self.result['samples']['d01']),
+            size=N,
+        )
 
         junpackl1 = jax.jit(self.l1model.unpackParams)
 
@@ -796,46 +953,65 @@ def _ModeIDClassPriorSpectrum(self, N):
 
         jptforml1 = jax.jit(self.l1model.ptform)
 
-        for k in rint:
+        for _ in rint:
             u = np.random.uniform(0, 1, size=self.l1model.ndims)
-        
             theta = jptforml1(u)
-        
             thetaU = junpackl1(theta)
-            
-            mod = jmodell1(thetaU,)
+            mod = jmodell1(thetaU)
 
             ax[2].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
 
-        ax[2].plot([-100, -100], [-100, -100], color='C3', label='Prior samples', alpha=1)
-  
+        ax[2].plot(
+            [-100, -100],
+            [-100, -100],
+            color='C3',
+            label='Prior samples',
+            alpha=1,
+        )
+
     ax[0].legend(loc=3)
-     
+
     return fig, ax
- 
+
+
 def _ModeIDClassPostSpectrum(self, N):
- 
-    rint = np.random.randint(0, np.min([self.result['samples'][key].shape[0] for key in self.result['samples'].keys()]), size=N)
+
+    rint = np.random.randint(
+        0,
+        np.min([
+            self.result['samples'][key].shape[0]
+            for key in self.result['samples'].keys()
+        ]),
+        size=N,
+    )
 
     fig, ax = _makeBaseFrames(self)
- 
-    if hasattr(self, 'l20model'):
+
+    if _usesMSModel(self):
+        junpack = jax.jit(self.MSmodel.unpackParams)
+        jmodel = jax.jit(self.MSmodel.model)
+
+        for k in rint:
+            thetaU = junpack(self.MSSamples[k, :])
+            mod = jmodel(thetaU)
+
+            ax[0].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
+            ax[1].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
+
+    elif hasattr(self, 'l20model'):
 
         junpackl20 = jax.jit(self.l20model.unpackParams)
 
         jmodell20 = jax.jit(self.l20model.model)
 
         for k in rint:
-        
             thetaU = junpackl20(self.l20Samples[k, :])
-            
             mod = jmodell20(thetaU)
 
             ax[0].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
-
             ax[1].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
-    
-    if hasattr(self, 'l1model'):
+
+    if hasattr(self, 'l1model') and not _usesMSModel(self):
 
         junpackl1 = jax.jit(self.l1model.unpackParams)
 
@@ -843,47 +1019,49 @@ def _ModeIDClassPostSpectrum(self, N):
 
         for k in rint:
             thetaU = junpackl1(self.l1Samples[k, :])
-            
-            mod = jmodell1(thetaU,)
+            mod = jmodell1(thetaU)
 
             ax[2].plot(self.f[self.sel], mod, color='C3', alpha=0.2)
 
             llim, ulim = ax[2].get_ylim()
-             
-            line_bottom = ulim - 0.1*(ulim-llim)
+            line_bottom = ulim - 0.1 * (ulim - llim)
 
-            nu_l0 = self.result['summary']['freq'][0, self.result['ell']==0]
+            nu_l0 = self.result['summary']['freq'][
+                0,
+                self.result['ell'] == 0,
+            ]
+            for nu in nu_l0:
+                ax[2].plot(
+                    [nu, nu],
+                    [line_bottom, ulim],
+                    lw=5,
+                    color=ellColors[0],
+                )
 
-            for _, nu_l0 in enumerate(nu_l0):
-                ax[2].plot([nu_l0, nu_l0],[line_bottom, ulim], lw=5, color=ellColors[0])
+            nu_l2 = self.result['summary']['freq'][
+                0,
+                self.result['ell'] == 2,
+            ]
+            for nu in nu_l2:
+                ax[2].plot(
+                    [nu, nu],
+                    [line_bottom, ulim],
+                    lw=5,
+                    color=ellColors[2],
+                )
 
-            nu_l2 = self.result['summary']['freq'][0, self.result['ell']==2]
+    ax[0].plot(
+        [-100, -100],
+        [-100, -100],
+        color='C3',
+        label='Posterior samples',
+        alpha=1,
+    )
 
-            for _, nu_l2 in enumerate(nu_l2):
-                ax[2].plot([nu_l2, nu_l2],[line_bottom, ulim], lw=5, color=ellColors[2])
-  
-    ax[0].plot([-100, -100], [-100, -100], color='C3', label='Posterior samples', alpha=1)
-    
     ax[0].legend(loc=3, fontsize=14)
-    
-    # for i in range(1, ax.shape[0]):
-    #     for j, nu in enumerate(self.result['summary']['freq'][0]):
-            
-    #         if (i==1 and self.result['ell'][j]==1) or (i==2 and self.result['ell'][j]!=1):
-    #             _alpha=0.35
 
-    #         else:
-    #             _alpha=1.0
-
-    #         ax[i].axvline(nu, c='k', linestyle='--', alpha=_alpha, lw=3)
-        
-    #     ax[i].plot([-100, -100], [-100, -100], color='C3', label='Posterior samples', alpha=1)
-
-    #     ax[i].axvline(-100, c='k', linestyle='--', label='Median frequencies')
- 
-    #     ax[i].legend(loc=2)
- 
     return fig, ax
+
 
 def _PeakbagClassPriorSpectrum(self, N):
     
@@ -1151,79 +1329,93 @@ class plotting():
 
     def echelle(self, stage='posterior', ID=None, savepath=None, save_kwargs={}, kwargs={}):
 
-        if not 'colors' in kwargs:
+        if 'colors' not in kwargs:
             kwargs['colors'] = ellColors
 
-        if not 'scale' in kwargs:
+        if 'scale' not in kwargs:
             kwargs['scale'] = 1/300
 
-        if not 'Nsamples' in kwargs:
+        if 'Nsamples' not in kwargs:
             kwargs['Nsamples'] = 200
-            
+
         if self.__class__.__name__ == 'modeID':
 
-            if stage=='prior':
+            if stage == 'prior':
                 fig, ax = _ModeIDClassPriorEchelle(self, **kwargs)
 
-            elif stage=='posterior': 
+            elif stage == 'posterior': 
                 fig, ax = _ModeIDClassPostEchelle(self, **kwargs)
-                
+
             else:
-                raise ValueError('Set stage optional argument to either prior or posterior')
+                raise ValueError(
+                    'Set stage optional argument to either prior or posterior'
+                )
 
         elif self.__class__.__name__ == 'peakbag':  
-            
-            if stage=='prior':
+
+            if stage == 'prior':
                 fig, ax = _PeakbagClassPriorEchelle(self, **kwargs)
-                
-            elif stage=='posterior':
+
+            elif stage == 'posterior':
                 fig, ax = _PeakbagClassPostEchelle(self, **kwargs)
 
             else:
-                raise ValueError('Set stage optional argument to either prior or posterior')
+                raise ValueError(
+                    'Set stage optional argument to either prior or posterior'
+                )
 
         else:
-            raise ValueError('Unrecognized class type. Only modeID and peakbag have this plotting function built in.')
+            raise ValueError(
+                'Unrecognized class type. Only modeID and peakbag have this '
+                'plotting function built in.'
+            )
 
         if ID is not None:
-            ax.set_title(ID)
- 
-        if (savepath is not None):
+            np.asarray(ax, dtype=object).ravel()[0].set_title(ID)
+
+        if savepath is not None:
             fig.savefig(savepath, **save_kwargs)
 
         return fig, ax
 
-    def spectrum(self, stage='posterior', ID=None, savepath=None, kwargs={}, save_kwargs={}, N=30):
-         
-        if self.__class__.__name__ == 'modeID':
-            if stage=='prior':
 
+    def spectrum(self, stage='posterior', ID=None, savepath=None, kwargs={}, save_kwargs={}, N=30):
+
+        if self.__class__.__name__ == 'modeID':
+            if stage == 'prior':
                 fig, ax = _ModeIDClassPriorSpectrum(self, N, **kwargs)
 
-            elif stage=='posterior': 
-
+            elif stage == 'posterior': 
                 assert hasattr(self, 'result')
-
                 fig, ax = _ModeIDClassPostSpectrum(self, N, **kwargs)
+
             else:
-                raise ValueError('Set stage optional argument to either prior or posterior')
+                raise ValueError(
+                    'Set stage optional argument to either prior or posterior'
+                )
 
         elif self.__class__.__name__ == 'peakbag': 
 
-            if stage=='prior':
+            if stage == 'prior':
                 fig, ax = _PeakbagClassPriorSpectrum(self, N, **kwargs)
-                
-            elif stage=='posterior':
+
+            elif stage == 'posterior':
                 fig, ax = _PeakbagClassPostSpectrum(self, N, **kwargs)
+
             else:
-                raise ValueError('Set stage optional argument to either prior or posterior')
-        
+                raise ValueError(
+                    'Set stage optional argument to either prior or posterior'
+                )
+
         else:
-            raise ValueError('Unrecognized class type. Only modeID and peakbag have this plotting function built in.')        
-        
+            raise ValueError(
+                'Unrecognized class type. Only modeID and peakbag have this '
+                'plotting function built in.'
+            )        
+
         if ID is not None:
-            ax.set_title(ID)
-                        
+            np.asarray(ax, dtype=object).ravel()[0].set_title(ID)
+
         fig.tight_layout()
 
         if savepath is not None:
@@ -1231,140 +1423,139 @@ class plotting():
 
         return fig, ax
 
+
     def corner(self, stage='posterior', ID=None, labels=None, savepath=None, unpacked=False, kwargs={}, save_kwargs={}, N=5000):
-         
-        if not 'colors' in kwargs:
+
+        if 'colors' not in kwargs:
             kwargs['colors'] = ellColors
 
-        
         if self.__class__.__name__ == 'modeID':
-             
-            if stage=='prior':
-                 
-                fig, ax = [], []
-                
-                if hasattr(self, 'l20model'):
-                    figl20, axl20 = _ModeIDClassPriorCorner(self, self.l20model, unpacked, N, **kwargs)
-                    
-                    fig.append(figl20)
-                    
-                    ax.append(axl20)
+            if stage not in ['prior', 'posterior']:
+                raise ValueError(
+                    'Set stage optional argument to either prior or posterior'
+                )
 
-                else:
-                    warnings.warn('modeID does not currently have and l20model attribute, use runl20model first.')
+            fig, ax = [], []
+            active_models = []
 
-                if hasattr(self, 'l1model'):
-                    figl1, axl1 = _ModeIDClassPriorCorner(self, self.l1model, unpacked, N, **kwargs)
-
-                    fig.append(figl1)
-                
-                    ax.append(axl1)
-                    
-                else:
-                    warnings.warn('modeID does not currently have and l1model attribute, use runl1model first.')
-            
-            elif stage=='posterior': 
-                
-                fig, ax = [], []
-                
-                if hasattr(self, 'l20model'):
-                    figl20, axl20 = _ModeIDClassPostCorner(self, self.l20model, unpacked, N, **kwargs)
-                    
-                    fig.append(figl20)
-                    
-                    ax.append(axl20)
-
-                else:
-                    warnings.warn('modeID does not currently have and l20model attribute, use runl20model first.')
-
-                if hasattr(self, 'l1model'):
-                    figl1, axl1 = _ModeIDClassPostCorner(self, self.l1model, unpacked, N, **kwargs)
-
-                    fig.append(figl1)
-                
-                    ax.append(axl1)
-
-                else:
-                    warnings.warn('modeID does not currently have and l1model attribute, use runl1model first.')
+            if _usesMSModel(self):
+                active_models.append(self.MSmodel)
 
             else:
-                raise ValueError('Set stage optional argument to either prior or posterior')
-            
+                if hasattr(self, 'l20model'):
+                    active_models.append(self.l20model)
+                else:
+                    warnings.warn(
+                        'modeID does not currently have an l20model attribute; '
+                        'use runl20model or runMSmodel first.'
+                    )
+
+                if hasattr(self, 'l1model'):
+                    active_models.append(self.l1model)
+                else:
+                    warnings.warn(
+                        'modeID does not currently have an l1model attribute; '
+                        'use runl1model or runMSmodel first.'
+                    )
+
+            plot_function = (
+                _ModeIDClassPriorCorner
+                if stage == 'prior'
+                else _ModeIDClassPostCorner
+            )
+
+            for model in active_models:
+                model_fig, model_ax = plot_function(
+                    self,
+                    model,
+                    unpacked,
+                    N,
+                    **kwargs,
+                )
+                fig.append(model_fig)
+                ax.append(model_ax)
+
         elif self.__class__.__name__ == 'peakbag': 
-             
-            if stage=='prior':
+            if stage == 'prior':
+                samples = np.array([
+                    self.ptform(np.random.uniform(0, 1, size=self.ndims))
+                    for _ in range(N)
+                ])
+                fig, ax = _PeakbagClassPriorCorner(
+                    self,
+                    samples,
+                    labels,
+                    **kwargs,
+                )
 
-                samples = np.array([self.ptform(np.random.uniform(0, 1, size=self.ndims)) for i in range(N)])
-
-                fig, ax = _PeakbagClassPriorCorner(self, samples, labels, **kwargs)
-                
-            elif stage=='posterior':
-
+            elif stage == 'posterior':
                 samples = self.samples
+                fig, ax = _PeakbagClassPostCorner(
+                    self,
+                    samples,
+                    labels,
+                    **kwargs,
+                )
 
-                fig, ax = _PeakbagClassPostCorner(self, samples, labels, **kwargs)
             else:
-                raise ValueError('Set stage optional argument to either prior or posterior')
-            
+                raise ValueError(
+                    'Set stage optional argument to either prior or posterior'
+                )
+
         else:
-            raise ValueError('Unrecognized class type. Only modeID and peakbag have this plotting function built in.')
-        
+            raise ValueError(
+                'Unrecognized class type. Only modeID and peakbag have this '
+                'plotting function built in.'
+            )
+
+        if savepath is not None:
+            figures = fig if isinstance(fig, list) else [fig]
+            for i, figure in enumerate(figures):
+                path = savepath
+                if len(figures) > 1:
+                    root, extension = os.path.splitext(savepath)
+                    path = f'{root}_{i}{extension}'
+                figure.savefig(path, **save_kwargs)
+
         return fig, ax
 
+
     def reference(self, stage='posterior', ID=None):
-        """Make a corner plot of the prior sample with relevant overplotted values."""
+        """Make a corner plot of the prior sample and fitted values."""
 
-        if self.__class__.__name__ == 'modeID':
-            
-            fig, axes = [], []
+        if self.__class__.__name__ != 'modeID':
+            raise ValueError(
+                'This kind of plot is only available for the modeID module.'
+            )
 
-            if stage=='prior':
- 
-                if hasattr(self, 'l20model'):
-                    figl20, axl20 = _ModeIDPriorReference(self.l20model)
-                    
-                    fig.append(figl20)
-                    
-                    axes.append(axl20)
+        if stage not in ['prior', 'posterior']:
+            raise ValueError(
+                'Set stage optional argument to either prior or posterior'
+            )
 
-                if hasattr(self, 'l1model'):
-                    figl1, axl1 = _ModeIDPriorReference(self.l1model)
+        fig, axes = [], []
 
-                    fig.append(figl1)
-                    
-                    axes.append(axl1)
-
-            elif stage=='posterior':
-                if hasattr(self, 'l20model'):
-                    figl20, axl20 = _ModeIDPosteriorReference(self.l20model)
-
-                    fig.append(figl20)
-                    
-                    axes.append(axl20)
-
-                if hasattr(self, 'l1model'):
-                    figl1, axl1 = _ModeIDPosteriorReference(self.l1model)
-
-                    fig.append(figl1)
-                    
-                    axes.append(axl1)
-            else:
-                raise ValueError('Set stage optional argument to either prior or posterior')
-            
-            return fig, axes
+        if _usesMSModel(self):
+            models = [self.MSmodel]
         else:
-            raise ValueError('This kind of plot is only available for the modeIDsampler module.')
+            models = []
+            if hasattr(self, 'l20model'):
+                models.append(self.l20model)
+            if hasattr(self, 'l1model'):
+                models.append(self.l1model)
 
+        plot_function = (
+            _ModeIDPriorReference
+            if stage == 'prior'
+            else _ModeIDPosteriorReference
+        )
 
+        for model in models:
+            model_fig, model_axes = plot_function(model)
+            fig.append(model_fig)
+            axes.append(model_axes)
 
-
-
-
-
-
-
-
-
+        return fig, axes
 
 
     # def plotLatentCorner(self, samples, labels=None):
