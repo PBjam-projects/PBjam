@@ -38,14 +38,15 @@ classifiers = ["Development Status :: 5 - Production/Stable",
 
 [project.urls]
 Homepage = "https://pbjam.readthedocs.io/"
-Issues = "https://github.com/grd349/PBjam/issues"
+Issues = Issues = "https://github.com/PBjam-projects/PBjam/issues"
 Documentation = "https://pbjam.readthedocs.io/"
-Repository = "https://github.com/grd349/PBjam"
+Repository = "https://github.com/PBjam-projects/PBjam"
  
 [project.optional-dependencies]
 test = ["pytest",
         ]
 docs = ["sphinx",
+	"sphinx-rtd-theme",
         "nbsphinx",
         "ipykernel",
         ]

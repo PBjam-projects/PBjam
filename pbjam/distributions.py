@@ -14,6 +14,21 @@ from pbjam import jar
 import statsmodels.api as sm
 
 def makeDistObject(data, **kwargs):
+    """
+    Construct distribution wrappers from an empirical sample.
+    
+    Parameters
+    ----------
+    data : array-like
+        Two-dimensional sample with shape ``(n_samples, n_dimensions)``.
+    **kwargs
+        Additional arguments passed to :func:`getQuantileFuncs`.
+    
+    Returns
+    -------
+    list of distribution
+        One distribution wrapper for each column of ``data``.
+    """
 
     ppfs, pdfs, logpdfs, cdfs = getQuantileFuncs(data, **kwargs)
 
@@ -24,25 +39,34 @@ def makeDistObject(data, **kwargs):
     return D
 
 def getQuantileFuncs(data, cut=5, densityScale=30, **kwargs):
-    """ Compute distribution methods for arbitrary distributions.
-
-    All distributions are treated as separable.
-
+    """
+    Construct marginal distribution functions from an empirical sample.
+    
+    Each column is treated independently and represented by a univariate kernel
+    density estimate.
+    
     Parameters
     ----------
-    data : array
-        Array of samples to compute the distribution functions of.
-
+    data : array-like
+        Two-dimensional sample with shape ``(n_samples, n_dimensions)``.
+    cut : float, optional
+        Number of kernel bandwidths by which the KDE support extends beyond the
+        data range.
+    densityScale : int, optional
+        Multiplier controlling the resolution of the interpolated quantile grid.
+    **kwargs
+        Reserved for compatibility.
+    
     Returns
     -------
-    ppfs : list
-        List of callable functions to evaluate the ppfs of the samples.
-    pdfs : list
-        List of callable functions to evaluate the pdfs of the samples.
-    logpdfs : list
-        List of callable functions to evaluate the logpdfs of the samples.
-    cdfs : list
-        List of callable functions to evaluate the cdfs of the samples.
+    ppfs : list of callable
+        Percent-point functions for each dimension.
+    pdfs : list of callable
+        Probability density functions for each dimension.
+    logpdfs : list of callable
+        Log-probability density functions for each dimension.
+    cdfs : list of array-like
+        Cumulative-density values supplied by the fitted KDE objects.
     """
 
     ppfs = []
@@ -83,24 +107,30 @@ def getQuantileFuncs(data, cut=5, densityScale=30, **kwargs):
     return ppfs, pdfs, logpdfs, cdfs
 
 class beta():
+    """
+    Beta distribution on a finite interval.
+    
+    Parameters
+    ----------
+    a, b : float, optional
+        Positive shape parameters.
+    loc : float, optional
+        Lower bound of the support.
+    scale : float, optional
+        Width of the support.
+    """
     def __init__(self, a=1, b=1, loc=0, scale=1):
-        """ beta distribution class
-        Create instances a probability density which follows the beta
-        distribution.
+        """
+        Beta distribution on a finite interval.
+        
         Parameters
         ----------
-        a : float
-            The first shape parameter of the beta distribution.
-        b : float
-            The second shape parameter of the beta distribution.
-        loc : float
-            The lower limit of the beta distribution. The probability at this
-            limit and below is 0.
-        scale : float
-            The width of the beta distribution. Effectively sets the upper
-            bound for the distribution, which is loc+scale.
-        eps : float, optional
-            Small fudge factor to avoid dividing by 0 etc.
+        a, b : float, optional
+            Positive shape parameters.
+        loc : float, optional
+            Lower bound of the support.
+        scale : float, optional
+            Width of the support.
         """
 
         # Turn init args into attributes
@@ -117,12 +147,13 @@ class beta():
         self._set_stdatt()
 
     def rv(self):
-        """ Draw random variable from distribution
-
+        """
+        Draw one random variate.
+        
         Returns
         -------
-        x : float
-            Random variable drawn from the distribution
+        float or int
+            Random value drawn from the distribution.
         """
 
         u = np.random.uniform(0, 1)
@@ -132,67 +163,63 @@ class beta():
         return x
     
     def _set_stdatt(self):
-        """ Set mean and median for the distribution
+        """
+        Set standard summary attributes such as the mean and median.
         """
         self.mean = self.loc + self.scale * self.a / (self.a + self.b)
         self.median = self.ppf(0.5)
 
     @partial(jax.jit, static_argnums=(0,))
     def _transformx(self, x):
-        """ Transform x
-        Translates and scales the input x to the unit interval according to
-        the loc and scale parameters.
+        """
+        Map values from the distribution support to the unit interval.
         
         Parameters
         ----------
-        x : float
-            Input support for the probability density.
+        x : array-like
+            Values on the original support.
         
         Returns
         -------
-        _x : float
-            x translated and scaled to the range 0 to 1.
+        array-like
+            Transformed values.
         """
         return (x - self.loc) / self.scale
 
     @partial(jax.jit, static_argnums=(0,))
     def _inverse_transform(self, x):
-        """ Invert scaling on input
-
+        """
+        Map values from the unit interval to the distribution support.
+        
         Parameters
         ----------
-        x : float
-            Input
-
+        x : array-like
+            Values on the unit interval.
+        
         Returns
         -------
-        _x : float
-            Scaled x. 
+        array-like
+            Values on the original support.
         """
         
         return x * self.scale + self.loc
  
     @partial(jax.jit, static_argnums=(0,))
     def pdf(self, x, norm=True):
-        """ Return PDF
-
-        Returns the beta distribution at x. The distribution is normalized to
-        unit integral by default so that it may be used as a PDF.
-        In some cases the normalization is not necessary, and since it's
-        marginally slower it may as well be left out.
+        """
+        Evaluate the probability density function.
         
         Parameters
         ----------
-        x : array
-            Input support for the probability density.
+        x : array-like
+            Point or points at which to evaluate the distribution.
         norm : bool, optional
-            If true, returns the normalized beta distribution. The default is
-            True.
+            Include the normalization constant when ``True``.
         
         Returns
         -------
-        y : array
-            The value of the beta distribution at x.
+        array-like
+            Probability density at ``x``.
         """
  
         _x = self._transformx(x)
@@ -210,23 +237,20 @@ class beta():
         
     @partial(jax.jit, static_argnums=(0,))
     def logpdf(self, x, norm=True):
-        """ Return log-PDF
-        Returns the log of the beta distribution at x. The distribution is
-        normalized to unit integral (in linear units) by default so that it
-        may be used as a PDF.
-        In some cases the normalization is not necessary, and since it's
-        marginally slower it may as well be left out.
+        """
+        Evaluate the log-probability density function.
+        
         Parameters
         ----------
-        x : array
-            Input support for the probability density.
+        x : array-like
+            Point or points at which to evaluate the distribution.
         norm : bool, optional
-            If true, returns the normalized beta distribution. The default is
-            True.
+            Include the normalization constant when ``True``.
+        
         Returns
         -------
-        y : array
-            The value of the logarithm of the beta distribution at x.
+        array-like
+            Log-probability density at ``x``.
         """
 
         x = jnp.array(x)
@@ -244,6 +268,19 @@ class beta():
 
         
     def cdf(self, x):
+        """
+        Evaluate the cumulative distribution function.
+        
+        Parameters
+        ----------
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
+        Returns
+        -------
+        array-like
+            Cumulative probability at ``x``.
+        """
 
         _x = self._transformx(x)
 
@@ -257,6 +294,19 @@ class beta():
 
     @partial(jax.jit, static_argnums=(0,))
     def ppf(self, y):
+        """
+        Evaluate the percent-point (quantile) function.
+        
+        Parameters
+        ----------
+        y : array-like
+            Cumulative probability in the interval [0, 1].
+        
+        Returns
+        -------
+        array-like
+            Quantile corresponding to ``y``.
+        """
 
         _x = self.betaincinv(self.a, self.b, y)
 
@@ -267,6 +317,9 @@ class beta():
 
     @partial(jax.jit, static_argnums=(0,))
     def update_x(self, x, a, b, p, a1, b1, afac):
+        """
+        Perform one root-finding update for the inverse incomplete beta function.
+        """
         err = jsp.betainc(a, b, x) - p
         t = jnp.exp(a1 * jnp.log(x) + b1 * jnp.log(1.0 - x) + afac)
         u = err/t
@@ -280,6 +333,9 @@ class beta():
 
     @partial(jax.jit, static_argnums=(0,))
     def func_1(sefl, a, b, p):
+        """
+        Compute an initial inverse-beta estimate when both shapes are at least one.
+        """
         pp = jnp.where(p < .5, p, 1. - p)
         t = jnp.sqrt(-2. * jnp.log(pp))
         x = (2.30753 + t * 0.27061) / (1.0 + t * (0.99229 + t * 0.04481)) - t
@@ -291,6 +347,9 @@ class beta():
 
     @partial(jax.jit, static_argnums=(0,))
     def func_2(sefl, a, b, p):
+        """
+        Compute an initial inverse-beta estimate when either shape is below one.
+        """
         lna = jnp.log(a / (a + b))
         lnb = jnp.log(b / (a + b))
         t = jnp.exp(a * lna) / a
@@ -301,10 +360,16 @@ class beta():
 
     @partial(jax.jit, static_argnums=(0,))
     def compute_x(self, p, a, b):
+        """
+        Select an initial estimate for the inverse incomplete beta function.
+        """
         return jnp.where(jnp.logical_and(a >= 1.0, b >= 1.0), self.func_1(a, b, p), self.func_2(a, b, p))
 
     @partial(jax.jit, static_argnums=(0,))
     def betaincinv(self, a, b, p):
+        """
+        Approximate the inverse regularized incomplete beta function.
+        """
         a1 = a - 1.0
         b1 = b - 1.0
 
@@ -324,24 +389,22 @@ class beta():
         return x
 
 class distribution():
-    def __init__(self, ppf, pdf, logpdf, cdf):
-        """ Generic distribution object
-
-        Creates wrapper for a set of methods that return the pdf logpdf, ppf and 
-        cdf of an arbitrary distribution. 
+    """
+    Wrap callable PDF, log-PDF, CDF, and PPF functions.
     
+    Parameters
+    ----------
+    ppf, pdf, logpdf, cdf : callable
+        Functions implementing the corresponding distribution methods.
+    """
+    def __init__(self, ppf, pdf, logpdf, cdf):
+        """
+        Wrap callable PDF, log-PDF, CDF, and PPF functions.
+        
         Parameters
         ----------
-        ppf : callable 
-            Function that, given a value between 0 and 1, returns a sample drawn 
-            from the pdf.
-        pdf : callable
-            Function that, given x returns the value of pdf(x)
-        logpdf : callable
-            Function that, given x return the value of log(pdf(x)). 
-        cdf : callable
-            Function that, given x returns the value of cdf(x).
-
+        ppf, pdf, logpdf, cdf : callable
+            Functions implementing the corresponding distribution methods.
         """
 
         self.pdf = pdf
@@ -355,12 +418,13 @@ class distribution():
         self._set_stdatt()
 
     def rv(self):
-        """ Draw random variable from distribution
-
+        """
+        Draw one random variate.
+        
         Returns
         -------
-        x : float
-            Random variable drawn from the distribution
+        float or int
+            Random value drawn from the distribution.
         """
 
         u = np.random.uniform(0, 1)
@@ -370,7 +434,8 @@ class distribution():
         return x
     
     def _set_stdatt(self):       
-        """ Set mean and median for the distribution
+        """
+        Set standard summary attributes such as the mean and median.
         """
         x = jnp.linspace(self.ppf(1e-6), self.ppf(1-1e-6), 1000)
 
@@ -379,22 +444,26 @@ class distribution():
         self.median = self.ppf(0.5)
 
 class uniform():
+    """
+    Continuous uniform distribution.
+    
+    Parameters
+    ----------
+    loc : float, optional
+        Lower bound.
+    scale : float, optional
+        Width of the support.
+    """
     def __init__(self, loc=0, scale=1):
-        """ Uniform distribution
-
-        Emulates the scipy.stats class, but is jaxed.
-
+        """
+        Continuous uniform distribution.
+        
         Parameters
         ----------
-        loc : float
-            Left side of the uniform distribution
-        scale : float
-            Width of the uniform distribution, such that the right side is loc+scale
-        
-        Attributes
-        ----------
-        mu : float
-            Mean (loc+scale/2) of the distribution.
+        loc : float, optional
+            Lower bound.
+        scale : float, optional
+            Width of the support.
         """
 
         # Turn init args into attributes
@@ -410,12 +479,13 @@ class uniform():
 
     
     def rv(self):
-        """ Draw random variable from distribution
-
+        """
+        Draw one random variate.
+        
         Returns
         -------
-        x : float
-            Random variable drawn from the distribution
+        float or int
+            Random value drawn from the distribution.
         """
 
         u = np.random.uniform(0, 1)
@@ -425,24 +495,26 @@ class uniform():
         return x
     
     def _set_stdatt(self):
-        """ Set mean and median for the distribution
+        """
+        Set standard summary attributes such as the mean and median.
         """
         self.mean = self.a + 0.5 * self.scale
         self.median = self.ppf(0.5)
 
     @partial(jax.jit, static_argnums=(0,))
     def pdf(self, x):
-        """ The probability density of the distribution
-
+        """
+        Evaluate the probability density or mass function.
+        
         Parameters
         ----------
-        x : float
-            Evaluate the pdf at x
-
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
         Returns
         -------
-        y : float
-            The probability at x
+        array-like
+            Probability density at ``x``.
         """
             
         T = jax.lax.lt(x, self.a) | jax.lax.lt(self.b, x)  
@@ -453,17 +525,18 @@ class uniform():
 
     @partial(jax.jit, static_argnums=(0,))
     def logpdf(self, x):
-        """ The log-probability of the distribution
-
+        """
+        Evaluate the log-probability density function.
+        
         Parameters
         ----------
-        x : float
-            Evaluate the pdf at x
-
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
         Returns
         -------
-        y : float
-            The probability at x
+        array-like
+            Log-probability density at ``x``.
         """
  
         T = jax.lax.lt(x, self.a) | jax.lax.lt(self.b, x)  
@@ -474,17 +547,18 @@ class uniform():
 
     @partial(jax.jit, static_argnums=(0,))
     def cdf(self, x):
-        """ The cumulative probability distribution function
-
+        """
+        Evaluate the cumulative distribution function.
+        
         Parameters
         ----------
-        x : float
-            Evaluate the cdf at x
-
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
         Returns
         -------
-        y : float
-            The cumulative probability at x
+        array-like
+            Cumulative probability at ``x``.
         """
  
         y = (x - self.a) / (self.b - self.a)
@@ -493,17 +567,18 @@ class uniform():
 
     @partial(jax.jit, static_argnums=(0,))
     def ppf(self, y):
-        """ The point percent (quantile) function. 
-
+        """
+        Evaluate the percent-point (quantile) function.
+        
         Parameters
         ----------
-        y : float
-            Evaluate the ppf at y.
-
+        y : array-like
+            Cumulative probability in the interval [0, 1].
+        
         Returns
         -------
-        x : float
-            The support of the pdf at pdf = y.
+        array-like
+            Quantile corresponding to ``y``.
         """
 
         y = jnp.array(y)
@@ -513,19 +588,26 @@ class uniform():
         return x
 
 class normal():
+    """
+    Normal distribution.
+    
+    Parameters
+    ----------
+    loc : float, optional
+        Mean.
+    scale : float, optional
+        Standard deviation.
+    """
     def __init__(self, loc=0, scale=1):
-        """ normal distribution class
-
-        Create instances a probability density which follows the normal
-        distribution.
-
+        """
+        Normal distribution.
+        
         Parameters
         ----------
-
-        mu : float
-            The mean of the normal distribution.
-        sigma : float
-            The standard deviation of the normal distribution.
+        loc : float, optional
+            Mean.
+        scale : float, optional
+            Standard deviation.
         """
         # Turn init args into attributes
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
@@ -540,12 +622,13 @@ class normal():
 
 
     def rv(self):
-        """ Draw random variable from distribution
-
+        """
+        Draw one random variate.
+        
         Returns
         -------
-        x : float
-            Random variable drawn from the distribution
+        float or int
+            Random value drawn from the distribution.
         """
 
         u = np.random.uniform(0, 1)
@@ -555,34 +638,28 @@ class normal():
         return x
     
     def _set_stdatt(self):
-        """ Set mean and median for the distribution
+        """
+        Set standard summary attributes such as the mean and median.
         """
         self.mean = self.loc
         self.median = self.ppf(0.5)
     
     @partial(jax.jit, static_argnums=(0,))
     def pdf(self, x, norm=True):
-        """ Return PDF
-
-        Returns the normal distribution at x. The distribution is normalized to
-        unit integral by default so that it may be used as a PDF.
-
-        In some cases the normalization is not necessary, and since it's
-        marginally slower it may as well be left out.
-
+        """
+        Evaluate the probability density function.
+        
         Parameters
         ----------
-        x : array
-            Input support for the probability density.
+        x : array-like
+            Point or points at which to evaluate the distribution.
         norm : bool, optional
-            If true, returns the normalized normal distribution. The default is
-            True.
-
+            Include the normalization constant when ``True``.
+        
         Returns
         -------
-        y : array
-            The value of the normal distribution at x.
-
+        array-like
+            Probability density at ``x``.
         """
         y = jnp.exp( self.fac * (x - self.loc)**2)
 
@@ -595,27 +672,20 @@ class normal():
 
     @partial(jax.jit, static_argnums=(0,))
     def logpdf(self, x, norm=True):
-        """ Return log-PDF
-
-        Returns the log of the normal distribution at x. The distribution is
-        normalized to unit integral (in linear units) by default so that it
-        may be used as a PDF.
-
-        In some cases the normalization is not necessary, and since it's
-        marginally slower it may as well be left out.
-
+        """
+        Evaluate the log-probability density function.
+        
         Parameters
         ----------
-        x : array
-            Input support for the probability density.
+        x : array-like
+            Point or points at which to evaluate the distribution.
         norm : bool, optional
-            If true, returns the normalized normal distribution. The default is
-            True.
-
+            Include the normalization constant when ``True``.
+        
         Returns
         -------
-        y : array
-            The value of the logarithm of the normal distribution at x.
+        array-like
+            Log-probability density at ``x``.
         """
 
         y = self.fac * (x - self.loc)**2
@@ -629,6 +699,19 @@ class normal():
 
     @partial(jax.jit, static_argnums=(0,))
     def cdf(self, x):
+        """
+        Evaluate the cumulative distribution function.
+        
+        Parameters
+        ----------
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
+        Returns
+        -------
+        array-like
+            Cumulative probability at ``x``.
+        """
 
         y = 0.5 * (1 + jsp.erf((x-self.loc)/(jnp.sqrt(2)*self.scale)))
 
@@ -636,25 +719,43 @@ class normal():
 
     @partial(jax.jit, static_argnums=(0,))
     def ppf(self, y):
+        """
+        Evaluate the percent-point (quantile) function.
+        
+        Parameters
+        ----------
+        y : array-like
+            Cumulative probability in the interval [0, 1].
+        
+        Returns
+        -------
+        array-like
+            Quantile corresponding to ``y``.
+        """
 
         x = self.loc + self.scale*jnp.sqrt(2)*jsp.erfinv(2*y-1)
 
         return x
 
 class truncsine():
+    """
+    Sine distribution truncated to the interval [0, pi/2].
+    """
     def __init__(self,):
-        """ Sine truncated between 0 and pi/2
+        """
+        Sine distribution truncated to the interval [0, pi/2].
         """
 
         self._set_stdatt()
         
     def rv(self):
-        """ Draw random variable from distribution
-
+        """
+        Draw one random variate.
+        
         Returns
         -------
-        x : float
-            Random variable drawn from the distribution
+        float or int
+            Random value drawn from the distribution.
         """
 
         u = np.random.uniform(0, 1)
@@ -664,24 +765,26 @@ class truncsine():
         return x
 
     def _set_stdatt(self):
-        """ Set mean and median for the distribution
+        """
+        Set standard summary attributes such as the mean and median.
         """
         self.mean = 1.0
         self.median = self.ppf(0.5)
  
     @partial(jax.jit, static_argnums=(0,))
     def pdf(self, x):
-        """ The probability density of the distribution
-
+        """
+        Evaluate the probability density or mass function.
+        
         Parameters
         ----------
-        x : float
-            Evaluate the pdf at x
-
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
         Returns
         -------
-        y : float
-            The probability at x
+        array-like
+            Probability density or mass at ``x``.
         """
 
         T = jax.lax.lt(x, 0.) | jax.lax.lt(jnp.pi/2, x)  
@@ -692,17 +795,18 @@ class truncsine():
 
     @partial(jax.jit, static_argnums=(0,))
     def logpdf(self, x):
-        """ The log-probability of the distribution
-
+        """
+        Evaluate the log-probability density or mass function.
+        
         Parameters
         ----------
-        x : float
-            Evaluate the pdf at x
-
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
         Returns
         -------
-        y : float
-            The probability at x
+        array-like
+            Log-probability density or mass at ``x``.
         """
 
         T = jax.lax.lt(x, 0.) | jax.lax.lt(jnp.pi/2., x)  
@@ -713,17 +817,18 @@ class truncsine():
 
     @partial(jax.jit, static_argnums=(0,))
     def cdf(self, x):
-        """ The cumulative probability distribution function
-
+        """
+        Evaluate the cumulative distribution function.
+        
         Parameters
         ----------
-        x : float
-            Evaluate the cdf at x
-
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
         Returns
         -------
-        y : float
-            The cumulative probability at x
+        array-like
+            Cumulative probability at ``x``.
         """
 
         y = 1 + jnp.cos(x-jnp.pi) 
@@ -732,17 +837,18 @@ class truncsine():
 
     @partial(jax.jit, static_argnums=(0,))
     def ppf(self, y):
-        """ The point percent (quantile) function. 
-
+        """
+        Evaluate the percent-point (quantile) function.
+        
         Parameters
         ----------
-        y : float
-            Evaluate the ppf at y.
-
+        y : array-like
+            Cumulative probability in the interval [0, 1].
+        
         Returns
         -------
-        x : float
-            The support of the pdf at pdf = y.
+        array-like
+            Quantile corresponding to ``y``.
         """
 
         x = jnp.arccos(1-y)
@@ -750,7 +856,27 @@ class truncsine():
         return x
     
 class randint():
+    """
+    Discrete uniform distribution over consecutive integers.
+    
+    Parameters
+    ----------
+    low : int
+        Inclusive lower bound.
+    high : int
+        Exclusive upper bound.
+    """
     def __init__(self, low, high):
+        """
+        Discrete uniform distribution over consecutive integers.
+        
+        Parameters
+        ----------
+        low : int
+            Inclusive lower bound.
+        high : int
+            Exclusive upper bound.
+        """
         self.low = low
         
         self.high = high
@@ -762,12 +888,13 @@ class randint():
         self._set_stdatt()
 
     def rv(self):
-        """ Draw random variable from distribution
-
+        """
+        Draw one random variate.
+        
         Returns
         -------
-        x : float
-            Random variable drawn from the distribution
+        float or int
+            Random value drawn from the distribution.
         """
 
         u = np.random.uniform(0, 1)
@@ -777,7 +904,8 @@ class randint():
         return x
 
     def _set_stdatt(self):
-        """ Set mean and median for the distribution
+        """
+        Set standard summary attributes such as the mean and median.
         """
         x = jnp.linspace(self.ppf(1e-6), self.ppf(1-1e-6), 1000)
 
@@ -787,17 +915,18 @@ class randint():
 
     @partial(jax.jit, static_argnums=(0,))    
     def pdf(self, x):
-        """_summary_
-
+        """
+        Evaluate the probability density or mass function.
+        
         Parameters
         ----------
-        x : _type_
-            _description_
-
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
         Returns
         -------
-        _type_
-            _description_
+        array-like
+            Probability density or mass at ``x``.
         """
         T = jnp.sum(self.ints == x).astype(bool)
         
@@ -807,6 +936,19 @@ class randint():
     
     @partial(jax.jit, static_argnums=(0,))    
     def logpdf(self, x):
+        """
+        Evaluate the log-probability density or mass function.
+        
+        Parameters
+        ----------
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
+        Returns
+        -------
+        array-like
+            Log-probability density or mass at ``x``.
+        """
         T = jnp.sum(self.ints == x).astype(bool)
         
         y = jax.lax.cond(T, lambda : -self.diff, lambda : -jnp.inf)
@@ -815,6 +957,19 @@ class randint():
 
     @partial(jax.jit, static_argnums=(0,))    
     def cdf(self, x):
+        """
+        Evaluate the cumulative distribution function.
+        
+        Parameters
+        ----------
+        x : array-like
+            Point or points at which to evaluate the distribution.
+        
+        Returns
+        -------
+        array-like
+            Cumulative probability at ``x``.
+        """
         
         k = jnp.floor(x)
         
@@ -822,6 +977,19 @@ class randint():
         
     @partial(jax.jit, static_argnums=(0,))
     def ppf(self, q):
+        """
+        Evaluate the percent-point (quantile) function.
+        
+        Parameters
+        ----------
+        q : array-like
+            Cumulative probability in the interval [0, 1].
+        
+        Returns
+        -------
+        array-like
+            Quantile corresponding to ``q``.
+        """
         vals = jnp.ceil(q * self.diff + self.low) - 1
         
         vals1 = (vals - 1).clip(self.low, self.high)

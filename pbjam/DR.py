@@ -10,28 +10,60 @@ from functools import partial
 jax.config.update('jax_enable_x64', True)
 
 class PCA():
+    """
+    Perform local, optionally weighted principal-component analysis.
+    
+    The class selects a neighbourhood from a prior-sample table, standardizes the
+    chosen variables, computes a weighted covariance matrix, and provides
+    transformations between model space and a reduced latent space.
+    
+    Parameters
+    ----------
+    obs : dict
+        Observational constraints used to select the local prior sample.
+    varLabels : list of str
+        Columns included in the PCA.
+    fName : str or pathlib.Path
+        CSV file containing the prior sample.
+    nSamples : int
+        Requested number of neighbouring prior samples.
+    selectLabels : list of str
+        Columns used to identify nearby samples.
+    weights : array-like or callable, optional
+        Sample weights or a callable that computes them.
+    weightArgs : dict, optional
+        Keyword arguments passed to a callable ``weights`` object.
+    dropNansIn : {"all", "select"}, optional
+        Controls whether rows containing missing PCA variables are removed, or only
+        rows missing selection variables.
+    """
     def __init__(self, obs, varLabels, fName, nSamples, selectLabels, weights=None, weightArgs={}, dropNansIn='all'):
-        """ Class for handling PCA-based dimensionality reduction
-
+        """
+        Perform local, optionally weighted principal-component analysis.
+        
+        The class selects a neighbourhood from a prior-sample table, standardizes the
+        chosen variables, computes a weighted covariance matrix, and provides
+        transformations between model space and a reduced latent space.
+        
         Parameters
         ----------
-        obs : list
-            List of observational parameters, e.g., numax, dnu, teff, bp_rp. To 
-            be used to find local covariance. Must be in the same units as in 
-            the prior sample file.
-        varLabels : list
-            List of labels to be used for the PCA. Should probably correspond to
-            columns in csv file or you won't get very far.
-        fName : str
-            Full pathname of the csv file containing the prior sample
-        nsamples : int
-            Number of neighbors to use.
-        weights : object, optional
-            Array corresponding to N or callable function to get a list of 
-            weights to apply to the data sample, by default None
+        obs : dict
+            Observational constraints used to select the local prior sample.
+        varLabels : list of str
+            Columns included in the PCA.
+        fName : str or pathlib.Path
+            CSV file containing the prior sample.
+        nSamples : int
+            Requested number of neighbouring prior samples.
+        selectLabels : list of str
+            Columns used to identify nearby samples.
+        weights : array-like or callable, optional
+            Sample weights or a callable that computes them.
         weightArgs : dict, optional
-            Dictionary of arguments if weights is a callable function, empty by 
-            default.
+            Keyword arguments passed to a callable ``weights`` object.
+        dropNansIn : {"all", "select"}, optional
+            Controls whether rows containing missing PCA variables are removed, or only
+            rows missing selection variables.
         """
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
          
@@ -51,14 +83,15 @@ class PCA():
 
     def setWeights(self, w, kwargs):
         """
-        Set the PCA weights. If None is given then the weights are uniform.
-
+        Set the sample weights.
+        
         Parameters
         ----------
-        w : np.array
-            Array of weights of length equal to number of samples.
+        w : array-like, callable, or None
+            Explicit weights, a callable that computes weights, or ``None`` for uniform
+            weights.
         kwargs : dict
-            Dictionary of kwargs for the weight function.
+            Keyword arguments supplied to a callable ``w``.
         """
          
         if w is None:
@@ -73,34 +106,20 @@ class PCA():
 
     def readPriorData(self, fName, labels):
         """
-        Read and preprocess prior data from a CSV file.
+        Read and preprocess the prior-sample table.
         
         Parameters
         ----------
-        fName : str 
-            The file name or path of the CSV file to be read.
-        labels : list: 
-            A list of column labels to be extracted from the CSV file.
+        fName : str or pathlib.Path
+            CSV file containing the prior sample.
+        labels : list of str
+            Columns to read.
         
         Returns
         -------
-        pdata : pandas.DataFrame
-            A pandas DataFrame containing the extracted data with preprocessing 
-            applied.
-        
-        Raises
-        ------
-            FileNotFoundError: If the specified file `fName` does not exist.
-            ValueError: If the `labels` parameter is empty or contains invalid column labels.
-        
-        Notes
-        -----
-            - The function reads the CSV file specified by `fName` and extracts the columns
-            specified by the `labels` parameter.
-            - It performs preprocessing on the extracted data, including replacing infinite
-            values with NaN, dropping rows with any NaN values, and resetting the DataFrame
-            index.
-            - The resulting preprocessed DataFrame is returned.
+        pandas.DataFrame
+            Selected columns after replacing infinities and dropping required missing
+            values.
         """
 
         self.priorData = pd.read_csv(fName, usecols=labels)
@@ -119,27 +138,24 @@ class PCA():
         return self.priorData
 
     def getSample(self, fName, nSamples):
-        """_summary_
-
+        """
+        Load and select a local prior sample.
+        
         Parameters
         ----------
-        fName : str
-            File name where prior samples are stored.
+        fName : str or pathlib.Path
+            CSV file containing the prior sample.
         nSamples : int
-            Number of samples from the prior to draw around the target in terms 
-            of numax.
-
+            Requested number of neighbouring samples.
+        
         Returns
         -------
-        pdata : jax device array
-            The nSamples drawn from the nearest region around the required 
-            point in the prior sample file.
-        _ndim : int
-            Number of dimensions of the output. Should be the same length as
-            varLabels.
-        _nSamples : int
-            Number of samples in the output. Might be less than the requested
-            if the prior sample file is small in comparison.
+        data : jax.Array
+            Selected PCA variables.
+        n_dimensions : int
+            Number of PCA variables.
+        n_samples : int
+            Number of selected rows after filtering.
         """
          
         readlabels = self.varLabels + [key for key in self.selectLabels if key not in self.varLabels]
@@ -155,22 +171,20 @@ class PCA():
         return jnp.array(self.selectedSubset[self.varLabels].to_numpy()), _ndim, _nSamples
 
     def findNearest(self, fullPriorData, N):
-        """ Find nearest neighbours.
-
-        Uses Euclidean distance to find the N nearest neighbors to a set of 
-        observational parameters.
-
+        """
+        Select the nearest prior samples in observable space.
+        
         Parameters
         ----------
-        pdata : pandas dataframe
-            Dataframe of the set of observations to search.
+        fullPriorData : pandas.DataFrame
+            Complete, preprocessed prior table.
         N : int
-            Number of neighbors to find.
-
+            Maximum number of neighbours to return.
+        
         Returns
         -------
-        pandas dataframe
-            Subset of pdata that contains only the N nearest neighbors.
+        pandas.DataFrame
+            Up to ``N`` nearest viable samples.
         """
 
         limits = {'numax': 0.2,
@@ -210,18 +224,18 @@ class PCA():
     @partial(jax.jit, static_argnums=(0,))
     def scale(self, data):
         """
-        Scale a sample of data such that it has zero mean and unit standard
-        deviation.
-
+        Standardize model-space samples.
+        
         Parameters
         ----------
-        data : jax.DeviceArray
-            Sample of data
-
+        data : array-like
+            Samples in model space.
+        
         Returns
         -------
-        scaledData : jax.DeviceArray
-            The sample of data scaled.
+        jax.Array
+            Samples shifted by the weighted mean and divided by the weighted standard
+            deviation.
         """
 
         scaledData = (data - self.mu) / self.std
@@ -231,18 +245,17 @@ class PCA():
     @partial(jax.jit, static_argnums=(0,))
     def inverse_scale(self, scaledData):
         """
-        Invert the scaling of the data.
-
+        Undo model-space standardization.
+        
         Parameters
         ----------
-        scaledData : jax.DeviceArray
-            Scaled sample of data.
-
+        scaledData : array-like
+            Standardized samples.
+        
         Returns
         -------
-        unscaled : jax.DeviceArray
-            The sample of data unscaled.
-
+        jax.Array
+            Samples restored to their original scale.
         """
 
         unscaled = scaledData * self.std + self.mu
@@ -251,17 +264,18 @@ class PCA():
 
     @partial(jax.jit, static_argnums=(0,))
     def transform(self, X):
-        """ Project model space parameters into latent space
-
+        """
+        Project model-space samples into latent PCA coordinates.
+        
         Parameters
         ----------
-        X : jax device array
-            Sample of model space parameters.
-
+        X : array-like
+            Samples in model space.
+        
         Returns
         -------
-        Y : jax device array
-            The coordinates of the model space samples in the latent space.
+        jax.Array
+            Coordinates in the retained latent dimensions.
         """
         _X = self.scale(X)
          
@@ -271,17 +285,18 @@ class PCA():
 
     @partial(jax.jit, static_argnums=(0,))
     def inverse_transform(self, Y):
-        """ Project from latent space into model space
-
+        """
+        Project latent PCA coordinates back into model space.
+        
         Parameters
         ----------
-        Y : jax device array
-            Sample of latent space parameters.
-
+        Y : array-like
+            Samples in latent space.
+        
         Returns
         -------
-        X : jax device array
-            The coordinates of the latent space samples in the model space.
+        jax.Array
+            Reconstructed model-space samples.
         """
 
         _X = jnp.dot(Y, self.eigvectors[:, self.sortidx].T)
@@ -298,8 +313,11 @@ class PCA():
         Parameters
         ----------
         dim : int
-            Set the number of dimensions to use. All PCAs are computed but
-            only dim are used in the projection into the latent space.
+            Maximum number of principal components to retain.
+        
+        Returns
+        -------
+        None
         """
 
         
@@ -320,7 +338,15 @@ class PCA():
         self.dataR = self.transform(self.dataF)
 
     def setLatentNormalPrior(self, latentSample=None):
-        """Set independent normal priors for each latent PCA coordinate."""
+        """
+        Set independent normal priors on the latent coordinates.
+        
+        Parameters
+        ----------
+        latentSample : array-like, optional
+            Sample used to estimate each latent mean and standard deviation. The fitted
+            PCA sample is used by default.
+        """
 
         from pbjam import distributions as dist
 
@@ -343,17 +369,18 @@ class PCA():
         self.cdf = [prior.cdf for prior in self.latentPriors]
 
     def covarianceMatrix(self, _X):
-        """ Compute the weighted covariance matrix
-
+        """
+        Compute the unbiased weighted covariance matrix.
+        
         Parameters
         ----------
-        _X : jax device array
-            Sample of parameters.
-
+        _X : array-like
+            Standardized samples with rows representing observations.
+        
         Returns
         -------
-        jax device array
-            Covariane matrix of the sample.
+        jax.Array
+            Weighted covariance matrix.
         """
 
         W = jnp.diag(self.weights)
@@ -364,12 +391,24 @@ class PCA():
 
     def refinePriorByObservables(self, N=10000, minAccepted=100, sigmaInflation=1,
                                  rng=None):
-        """Refit latent normal priors using draws consistent with observations.
-
-        Draws from the current latent prior, maps those points into the PCA
-        parameter space, accepts them with a normal likelihood in the observed
-        dimensions, and rebuilds the independent latent normal priors from the
-        accepted points.
+        """
+        Refine latent normal priors using observational consistency.
+        
+        Parameters
+        ----------
+        N : int, optional
+            Number of latent samples to draw.
+        minAccepted : int, optional
+            Minimum number of observationally consistent samples required.
+        sigmaInflation : float, optional
+            Multiplicative factor applied to observational uncertainties.
+        rng : numpy.random.Generator, optional
+            Random-number generator.
+        
+        Returns
+        -------
+        dict
+            Diagnostic information describing the accepted sample and refined priors.
         """
 
         if not hasattr(self, 'ppf'):

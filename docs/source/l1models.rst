@@ -1,4 +1,7 @@
-l1models
-^^^^^^^^
+Dipole-mode models
+==================
+
 .. automodule:: pbjam.l1models
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

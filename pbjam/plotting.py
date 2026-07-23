@@ -15,17 +15,19 @@ import jax
 ellColors = {0: 'C1', 1: 'C4', 2: 'C3', 3: 'C5'}
 
 def smooth_power(freq, power, smooth_filter_width):
-    """Smooths the input power array with a Box1DKernel from astropy
+    """Smooth a power spectrum with a Gaussian kernel.
     Parameters
     ----------
+    freq : array-like
+        Frequency values corresponding to ``power``.
     power : array-like
         Array of power values
     smooth_filter_width : float
-        filter width
+        Gaussian smoothing width in the same units as ``freq``.
     Returns
     -------
-    array-like
-        Smoothed power
+    ndarray
+        Smoothed power values.
     """
 
     fac = max([1, smooth_filter_width / (freq[1] - freq[0])])
@@ -56,6 +58,9 @@ def echelle(freq, power, dnu, fmin=0.0, fmax=None, offset=0.0, sampling=0.001):
         will default to the maximum frequency passed in `freq`, by default None
     offset : float, optional
         An offset to apply to the echelle diagram, by default 0.0
+    sampling : float, optional
+        Fraction of the native frequency spacing used when resampling each
+        echelle order.
 
     Returns
     -------

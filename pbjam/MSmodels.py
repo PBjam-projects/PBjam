@@ -13,8 +13,7 @@ import pbjam.distributions as dist
 jax.config.update('jax_enable_x64', True)
 
 class Asyl021model(samplers.DynestySampling, jar.generalModelFuncs):
-    """
-    A class for constructing the main-sequence model using the asymptotic relation for p-modes.
+    """Construct the asymptotic main-sequence ``l=0,1,2`` model.
 
     Parameters
     ----------
@@ -37,6 +36,17 @@ class Asyl021model(samplers.DynestySampling, jar.generalModelFuncs):
         Default is {'V20': 0.71, 'V10': 1.22}.
     priorPath : str, optional
         Path to prior information. If None, assumes it is in the pbjam/data directory.
+
+    selectivePrior : bool, optional
+        Whether to refine the PCA prior using the observational constraints.
+    selectivePriorN : int, optional
+        Number of candidate samples used for selective-prior refinement.
+    selectivePriorMin : int, optional
+        Minimum accepted sample count for the refined prior.
+    selectivePriorSigma : float, optional
+        Width of the acceptance region in observational standard deviations.
+    selectivePriorSeed : int, optional
+        Random seed used during selective-prior refinement.
 
     Attributes
     ----------
@@ -232,7 +242,7 @@ class Asyl021model(samplers.DynestySampling, jar.generalModelFuncs):
         Adds l=2,0 mode pairs to the spectrum.
 
         The mode heights are defined in terms of the SNR of the modes. The
-        resulting model should therefore be multipled onto a background to get
+        resulting model should therefore be multiplied onto a background to get
         a correct spectrum model.
 
         Parameters
@@ -411,7 +421,7 @@ class Asyl021model(samplers.DynestySampling, jar.generalModelFuncs):
         Parses the samples to extract and organize the model parameters.
 
         Attempts to include at most N samples from the model, but will default
-        to the actual number of samples of the model parameters if it's less than N.
+        to the actual number of samples of the model parameters if it is less than N.
 
         The resulting dictionary contains some global parameters, ell, enn, emm etc. and 
         two dictionaries, one containing the samples drawn and one with their summary 

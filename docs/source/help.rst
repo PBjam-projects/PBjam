@@ -1,8 +1,10 @@
-Help & Contact
+Getting help
 ==============
 
-If PBjam starts throwing errors at you, feel free to raise an `issue <https://github.com/grd349/PBjam/issues>`_ 
+If you encounter problems:
 
-For any other issues you can contact `Martin Nielsen <https://github.com/nielsenmb>`_ or  `Guy Davies <https://github.com/grd349>`_ 
-
-
+* Check the example notebooks.
+* Verify that your input observables and units are correct.
+* Ensure required dependencies are installed.
+* Search the GitHub issue tracker for similar reports.
+* Include your PBjam version, operating system and a minimal reproducible example when reporting bugs.

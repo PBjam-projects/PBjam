@@ -1,4 +1,7 @@
-MSmodels
-^^^^^^^^
+Main-sequence models
+====================
+
 .. automodule:: pbjam.MSmodels
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

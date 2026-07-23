@@ -1,5 +1,7 @@
-modeID
-^^^^^^
+Mode identification
+===================
+
 .. automodule:: pbjam.modeID
-    :members:
-    :special-members: __call__
+   :members:
+   :undoc-members:
+   :show-inheritance:

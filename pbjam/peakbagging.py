@@ -24,7 +24,7 @@ class peakbag(plotting):
     The default setting is to divide the spectrum into roughly the number of radial orders
     provided in the input frequency list. However, checks are performed to make sure closely
     spaced modes aren't split so any potential correlation is correctly accounted for. The 
-    number of slices may therefore be less than the requested if it's not possible to separate
+    number of slices may therefore be less than the requested if it is not possible to separate
     the modes.
 
     The slicing is done by a K-means clustering algorithm, where clusters are then merged if they
@@ -42,11 +42,11 @@ class peakbag(plotting):
         Frequencies of the modes corresponding to the angular degrees.
     height : array-like, optional
         Heights of the modes corresponding to the angular degrees. Default is None, 
-        in which case an SNR of 1 is assumed. Providing betters estimates from 
+        in which case an SNR of 1 is assumed. Providing better estimates from 
         modeID is however strongly recommended.
     width : array-like, optional
         Widths of the modes corresponding to the angular degrees. Default is None, 
-        in which case an width of 0.1 is assumed. Providing betters estimates from 
+        in which case a width of 0.1 is assumed. Providing better estimates from 
         modeID is however strongly recommended.
     zeta : array-like, optional
         Mixed-mode coupling factors of the modes corresponding to the angular degrees. 
@@ -64,9 +64,9 @@ class peakbag(plotting):
         Rotational asymmetry parameters. Default is None.
     RV : array-like, optional
         Radial velocity and associated error of the star in km/s. Default is None.
-    slices : int, optional
-        Number of slices for mode fitting. Default is -1, in which case the number of radial orders 
-        determined from `freq` is used. 
+    slice : bool or int, optional
+        Controls whether the spectrum is divided into independently fitted slices.
+        The exact interpretation is handled by the slicing logic. 
     snrInput : bool, optional
         Flag indicating if the input is signal-to-noise ratio (SNR) spectrum. Default is False.
     **kwargs : dict
@@ -196,7 +196,7 @@ class peakbag(plotting):
         used to penalize l=0 and l=2 frequencies that drift away from each other too 
         much, and also ensure they are unlikely to be negative.
 
-        A precise values is not strictly necessary.
+        A precise value is not strictly necessary.
 
         Returns
         -------
@@ -280,6 +280,19 @@ class peakbag(plotting):
         return bkgModel
   
     def _buildSpectrumMask(self, fac=1):
+        """Build the frequency mask used for peakbagging.
+
+        Parameters
+        ----------
+        fac : float, optional
+            Number of large separations by which to extend automatically
+            generated frequency limits.
+
+        Returns
+        -------
+        ndarray of bool
+            Boolean mask selecting the spectrum regions included in the fit.
+        """
 
         if len(self.freqLimits) == 0:
             self.freqLimits = [(min(self.freq[0, self.ell==0]) - fac * self.dnu[0],
@@ -328,7 +341,7 @@ class peakbag(plotting):
 
     def _checkSmallDiffs(self, cuts, nu, Gamma):
         """
-        Check for any slices that split closely spaced modes defined in termes 
+        Check for any slices that split closely spaced modes defined in terms 
         of a provided width `Gamma`.
 
         The frequency differences simply have to be larger than the given width.
@@ -671,7 +684,7 @@ class peakbag(plotting):
         Parses the samples to extract and organize the model parameters.
 
         Attempts to include at most N samples from the model, but will default
-        to the actual number of samples of the model parameters if it's less than N.
+        to the actual number of samples of the model parameters if it is less than N.
 
         The resulting dictionary contains some global parameters, ell, enn, emm etc. and 
         two dictionaries, one containing the samples drawn and one with their summary 
@@ -992,11 +1005,11 @@ class basePeakbag(plotting):
         Frequencies of the modes corresponding to the angular degrees.
     height : array-like
         Heights of the modes corresponding to the angular degrees. Default is None, 
-        in which case an SNR of 1 is assumed. Providing betters estimates from 
+        in which case an SNR of 1 is assumed. Providing better estimates from 
         modeID is however strongly recommended.
     width : array-like
         Widths of the modes corresponding to the angular degrees. Default is None, 
-        in which case an width of 0.1 is assumed. Providing betters estimates from 
+        in which case a width of 0.1 is assumed. Providing better estimates from 
         modeID is however strongly recommended.
     zeta : array-like
         Mixed-mode coupling factors of the modes corresponding to the angular degrees.
@@ -1336,7 +1349,7 @@ class basePeakbag(plotting):
         Parses the samples to extract and organize the model parameters.
 
         Attempts to include at most N samples from the model, but will default
-        to the actual number of samples of the model parameters if it's less than N.
+        to the actual number of samples of the model parameters if it is less than N.
 
         The resulting dictionary contains some global parameters, ell, enn, emm etc. and 
         two dictionaries, one containing the samples drawn and one with their summary 

@@ -191,7 +191,46 @@ class modeID(plotting, ):
                    loglikelihoodMultiplier=1.0, PCAsamples=50, PCAdims=6, selectivePrior=True,
                    selectivePriorN=10000, selectivePriorMin=100, selectivePriorSigma=1,
                    selectivePriorSeed=None, **kwargs):
-        """Fit the main-sequence ``l=0,1,2`` model in one stage."""
+        """Fit the main-sequence ``l=0,1,2`` model in one stage.
+
+        Parameters
+        ----------
+        progress : bool, optional
+            Whether dynesty should display sampler progress.
+        dynamic : bool, optional
+            Whether to use dynamic nested sampling.
+        minSamples : int, optional
+            Minimum number of posterior samples requested from the sampler.
+        sampler_kwargs : dict, optional
+            Additional keyword arguments passed to the dynesty sampler.
+        logl_kwargs : dict, optional
+            Additional keyword arguments passed to the log-likelihood function.
+        loglikelihoodMultiplier : float, optional
+            Multiplicative factor applied to the model log-likelihood.
+        PCAsamples : int, optional
+            Number of neighbouring prior samples used to construct the PCA prior.
+        PCAdims : int, optional
+            Number of retained principal components.
+        selectivePrior : bool, optional
+            Whether to refine the PCA prior using the observational constraints.
+        selectivePriorN : int, optional
+            Number of candidate samples used during selective-prior refinement.
+        selectivePriorMin : int, optional
+            Minimum accepted sample count for the refined prior.
+        selectivePriorSigma : float, optional
+            Width of the selective-prior acceptance region in observational
+            standard deviations.
+        selectivePriorSeed : int, optional
+            Random seed used during selective-prior refinement.
+        **kwargs
+            Reserved for API compatibility.
+
+        Returns
+        -------
+        dict
+            Parsed mode-identification result for the combined main-sequence
+            model.
+        """
 
         f = self.f[self.sel]
 

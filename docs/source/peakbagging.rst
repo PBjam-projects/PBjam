@@ -1,4 +1,7 @@
-peakbagging
-^^^^^^^^^^^
+Peakbagging
+===========
+
 .. automodule:: pbjam.peakbagging
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

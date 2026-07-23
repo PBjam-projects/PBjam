@@ -1,4 +1,7 @@
-samplers
-^^^^^^^^
+Sampling backends
+=================
+
 .. automodule:: pbjam.samplers
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

@@ -1,4 +1,7 @@
-jar
-^^^
+Shared utilities
+================
+
 .. automodule:: pbjam.jar
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

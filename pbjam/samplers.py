@@ -1,6 +1,9 @@
-"""
-The samplers modules contains a set of classes which are meant to be inherited by model classes. 
-These classes contain many of the 'standard' methods for sampling with their respective algorithm.
+"""Sampling utilities used by PBjam model classes.
+
+This module provides reusable base classes for posterior sampling with
+:mod:`emcee` and :mod:`dynesty`. Model classes inherit from these helpers and
+supply the model-specific likelihood, priors, parameter unpacking and spectrum
+construction methods.
 """
 
 import dynesty, emcee, time, jax
@@ -11,11 +14,12 @@ import numpy as np
 from functools import partial
 
 class EmceeSampling():
-    """ Class used for handling MCMC sampling with Emcee
+    """Mixin providing ensemble-MCMC sampling with :mod:`emcee`.
 
-    This class is meant to be inherited by various model classes to perform
-    affine invariant sampling using the Emcee package.
-
+    Inheriting classes must define ``priors``, ``ndims``, ``lnlikelihood``,
+    ``unpackParams`` and ``model``. The mixin handles prior evaluation,
+    initialization, burn-in, convergence checks, posterior sampling and storage
+    of the resulting chains.
     """
 
     def __init__(self):
@@ -74,7 +78,7 @@ class EmceeSampling():
         """
         Initializes the starting samples for MCMC chains.
 
-        Draws the samples from the respective parameter priors according the percentiles given by spread.
+        Draws the samples from the respective parameter priors according to the percentiles given by spread.
 
         Parameters
         ----------
@@ -404,8 +408,8 @@ class EmceeSampling():
 
         Parameters
         ----------
-        pos : ndarray, optional
-            The positions of the walkers after the burn-in phase.
+        sampler : emcee.EnsembleSampler
+            Sampler containing the burn-in chain and final walker positions.
         accept_lim: float, optional
             The value below which walkers will be labelled as bad and/or hence
             stuck.
@@ -415,7 +419,7 @@ class EmceeSampling():
         Returns
         -------
         pos : ndarray
-            The positions of the walkers after the low accepatance walkers have
+            The positions of the walkers after the low acceptance walkers have
             been folded into high acceptance distribution.
         
         """
@@ -518,7 +522,7 @@ class EmceeSampling():
         earlyStop : bool, optional
             Whether to stop the burn-in early if convergence is detected. Default is True.
         walltime : float, optional
-            The maximum allowed runtime in minutes. Default is 60.
+            Maximum allowed runtime in minutes. The default is 99999.
         nsamples : int, optional
             The number of independent samples desired. Default is 5000.
         checkEvery : int, optional
@@ -587,8 +591,7 @@ class DynestySampling():
         pass
 
     def _scaledLnlikelihood(self, theta, **kwargs):
-        """
-        Apply an optional log-likelihood tempering factor for dynesty.
+        """Apply an optional log-likelihood scaling factor for dynesty.
 
         Models that do not set ``likelihoodScale`` retain the unscaled
         likelihood used by previous versions.

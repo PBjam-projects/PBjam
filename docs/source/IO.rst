@@ -1,6 +1,7 @@
-IO
-^^
+Input and output
+================
+
 .. automodule:: pbjam.IO
-    :members:
-    :special-members: __call__
- 
+   :members:
+   :undoc-members:
+   :show-inheritance:

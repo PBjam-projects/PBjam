@@ -21,15 +21,14 @@ def _convertToList(arg):
 
     Parameters
     ----------
-    arg : str, tuple, np.ndarray, list
+    arg : str, tuple, numpy.ndarray, or list
         The input argument to be converted. Can be a string, tuple, NumPy array, or list.
 
     Returns
     -------
     list
-        The input argument converted to a list. If the input is already a list, it is returned as is.
-        If the input is a string, it is wrapped in a list.
-
+        ``arg`` as a list. Existing lists are returned unchanged.
+    
     Raises
     ------
     TypeError
@@ -59,16 +58,18 @@ def _validateObs(obs, name):
     Parameters
     ----------
     obs : dict
-        Dictionary containing observational data with each key having a tuple of (value, error).
+        Mapping from observable names to ``(value, uncertainty)`` pairs. The
+        required observables are ``numax``, ``dnu``, and ``teff``.
     name : str
         Name or identifier of the target being validated.
 
     Raises
     ------
     ValueError
-        If any of the required keys ('numax', 'dnu', 'teff') are missing from the `obs` dictionary.
-    AssertionError
-        If any value in `obs` is not iterable or is not in the form of a tuple with two elements (value, error).
+        If a required observable is missing from the `obs` dictionary, or an entry does not contain exactly
+        two values.
+    TypeError
+        If an observational entry is not iterable.
     """
 
     for key in ['numax', 'dnu', 'teff']:
@@ -83,43 +84,53 @@ def _validateObs(obs, name):
             raise ValueError('Entries in obs must be of the form (value, error)')
 
 class session():
-    """ Main class used to initiate peakbagging for several stars.
-
-    Use this class to initialize a star class instance for one or more targets.
-    Once initialized, calling the session class instance will execute a complete
-    peakbagging run.
-
+    """
+    Coordinate complete PBjam runs for one or more targets.
+    
+    A session validates the observational inputs, constructs or downloads a power
+    density spectrum for each target, and creates one :class:`star` instance per
+    target. Calling the session runs mode identification followed by peakbagging
+    for every star.
+    
     The observational constraints, such numax, dnu, teff, bp_rp, must be provided 
     through keyword entries in a dictionary, which is then passed via the obs 
     argument when initializing the session class.
-        
+    
     Unless you provide the time series or spectrum, PBjam will download it. In
     which case it will do some rudimentary reduction, like removing outliers,
     removing NaN values and running a median filter through the light curve,
     with a width appropriate for the provided numax.
- 
+    
     Parameters
     ----------
-    name : str
-        Target name, most commonly used identifiers can be used if you 
-        want PBjam to download the data (KIC, TIC, HD, Bayer etc.). If you 
-        provide data yourself the name can be any string.
+    name : str or sequence of str
+        Target identifier or identifiers. Common catalogue identifiers can be used
+        when PBjam downloads the data. Arbitrary strings are allowed when data are
+        supplied directly.
     obs : dict
-        Dictionary of observational inputs: numax, dnu, teff, bp_rp. 
-    timeseries : object, optional
-        Timeseries input. Leave as None for PBjam to download it automatically.
-        Otherwise, arrays of shape (2,N).
-    spectrum : object, optional
-        Spectrum input. Leave as None for PBjam to use Timeseries to compute
-        it for you. Otherwise, arrays of shape (2,N).
+        Observational constraints. For a single target, map observable names such
+        as ``numax``, ``dnu``, ``teff``, and optionally ``bp_rp`` to
+        ``(value, uncertainty)`` pairs. For multiple targets, the outer keys may be
+        target names.
+    timeseries : array-like or dict, optional
+        Time-series data with shape ``(2, N)`` for time and flux, or ``(3, N)``
+        for time, flux, and flux uncertainty. A dictionary may be used for
+        multiple targets.
+    spectrum : array-like or dict, optional
+        Power density spectrum with shape ``(2, N)``, containing frequency and
+        power density. A dictionary may be used for multiple targets.
     lk_kwargs : dict, optional
-        Arguments passed to lightkurve to download the time series.
-    outpath : str, optional
-        Path to store the plots and results for the various stages of the 
-        peakbagging process.    
-    downloadDir : str, optional
-        Directory to cache lightkurve downloads. Lightkurve will place the fits
-        files in the default lightkurve cache path in your home directory.            
+        Keyword arguments passed to Lightkurve when downloading data. For multiple
+        targets, this may be keyed by target name.
+    outpath : str or pathlib.Path, optional
+        Directory in which PBjam stores plots and results.
+    downloadDir : str or pathlib.Path, optional
+        Directory used to cache Lightkurve downloads.
+    
+    Notes
+    -----
+    When neither ``timeseries`` nor ``spectrum`` is supplied, PBjam downloads and
+    performs basic preprocessing of the light curve before computing its spectrum.
     """
 
     def __init__(self, name, obs, timeseries=None, spectrum=None, lk_kwargs={}, outpath=None, downloadDir=None):
@@ -264,10 +275,16 @@ class session():
 
         Parameters
         ----------
-        modeID_kwargs : dict
-            Arguments passed to the modeID stage of PBjam.
-        peakbag_kwargs : dict
-            Arguments passed to the peakbag stage of PBjam
+        modeID_kwargs : dict, optional
+            Keyword arguments passed to the mode-identification stage. The dictionary
+            may either apply to all targets or be keyed by target name.
+        peakbag_kwargs : dict, optional
+            Keyword arguments passed to the peakbagging stage. The dictionary may
+            either apply to all targets or be keyed by target name.
+        
+        Returns
+        -------
+        None
         """
  
         # If top level keys correspond 
@@ -300,7 +317,7 @@ class star(plotting):
     argument when initializing the session class.
         
     The star class only accepts a power density spectrum in the form of a list of
-    frequency bins 'f' and power density 's'.
+    frequency bins ``f`` and power density ``s``.
 
     Parameters
     ----------
@@ -311,14 +328,16 @@ class star(plotting):
     f : array-like
         Frequency bins of the power density spectrum.
     s : array-like
-        Power density spectrum with the same shape as 'f'.
+        Power density values with the same shape as ``f``.
     obs : dict
-        Dictionary of observational inputs: numax, dnu, teff, bp_rp. 
-    outpath : str, optional
-        Path to store the plots and results for the various stages of the 
-        peakbagging process. Default is to output to the working directory.
-    kwargs : dict
-        Dictionary of additional keyword arguments for either modeID or peakbag.    
+        Observational constraints, including ``numax``, ``dnu``, and ``teff``, as
+        ``(value, uncertainty)`` pairs.
+    outpath : str or pathlib.Path, optional
+        Directory in which PBjam stores plots and results. The working directory is
+        used by default.
+    **kwargs
+        Additional attributes used by the mode-identification or peakbagging
+        stages.
     """
 
     def __init__(self, name, f, s, obs, outpath=None, **kwargs):
@@ -341,19 +360,17 @@ class star(plotting):
         """ Run the mode identification process using the provided or default keyword arguments.
 
         This method creates a `modeID` instance and executes it with the arguments provided in 
-        `modeID_kwargs` or from the current object's attributes. If `priorpath` is not specified, 
-        it fetches the path to the prior file.
+        `modeID_kwargs` or from the current object's attributes. 
 
         Parameters
         ----------
         modeID_kwargs : dict, optional
-            Dictionary of additional keyword arguments to update or override the current object's attributes 
-            when initializing the `modeID` instance. Default is an empty dictionary.
-
-        Raises
-        ------
-        KeyError
-            If required parameters for mode identification are missing.
+            Keyword arguments passed to :class:`pbjam.modeID.modeID`.
+        
+        Returns
+        -------
+        dict
+            Mode-identification results.
         """
             
         _modeID_kwargs = copy.deepcopy(self.__dict__)
@@ -413,10 +430,10 @@ class star(plotting):
         Parameters
         ----------
         modeID_kwargs : dict, optional
-            Arguments to be passed to the modeID module. 
+            Keyword arguments passed to :meth:`runModeID`.
         peakbag_kwargs : dict, optional
-            Arguments to be passed to the peakbag module. 
-
+            Keyword arguments passed to :meth:`runPeakbag`.
+        
         Returns
         -------
         modeID_result: dict
