@@ -327,30 +327,18 @@ class beta():
             return y
 
         
+    @partial(jax.jit, static_argnums=(0,))
     def cdf(self, x):
-        """
-        Evaluate the cumulative distribution function.
-        
-        Parameters
-        ----------
-        x : array-like
-            Point or points at which to evaluate the distribution.
-        
-        Returns
-        -------
-        array-like
-            Cumulative probability at ``x``.
-        """
-
         _x = self._transformx(x)
+        clipped_x = jnp.clip(_x, 0.0, 1.0)
 
-        y = jsp.betainc(self.a, self.b, _x)
+        y = jsp.betainc(self.a, self.b, clipped_x)
 
-        y = y.at[_x<=0].set(0)
-
-        y = y.at[_x>=1].set(1)
-
-        return y
+        return jnp.where(
+            _x <= 0.0,
+            0.0,
+            jnp.where(_x >= 1.0, 1.0, y),
+        )
 
     @partial(jax.jit, static_argnums=(0,))
     def ppf(self, y):
