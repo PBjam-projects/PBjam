@@ -107,7 +107,7 @@ def test_api_pages_cover_package_modules():
 
 def test_readthedocs_configuration_targets_sphinx_docs():
     yaml = pytest.importorskip("yaml")
-    config_path = REPO_ROOT / "readthedocs.yaml"
+    config_path = REPO_ROOT / ".readthedocs.yaml"
 
     assert config_path.is_file()
     config = yaml.safe_load(config_path.read_text())
