@@ -695,7 +695,11 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
 
         thetaU = {key: theta_inv[i] for i, key in enumerate(self.pcaLabels)}
    
-        thetaU.update({key: theta[self.DR.dimsR:][i] for i, key in enumerate(self.addLabels)})
+        # The sampler constructs ``theta`` in ``self.priors`` insertion order.
+        # Custom priors can move parameters out of ``self.addLabels`` order, so
+        # label the non-PCA tail using the actual sampling order.
+        sampledLabels = list(self.priors.keys())[self.DR.dimsR:]
+        thetaU.update({key: theta[self.DR.dimsR:][i] for i, key in enumerate(sampledLabels)})
 
         for key in self.logpars:
             thetaU[key] = 10**thetaU[key]
