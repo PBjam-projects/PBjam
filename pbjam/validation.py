@@ -9,7 +9,7 @@ import scipy.stats as st
 import pbjam.distributions as dist
 import numpy as np
 import scipy.spatial.distance as ssd
-import statsmodels.api as sm
+# import statsmodels.api as sm
 
 
 class validate():
@@ -105,10 +105,10 @@ class validate():
 
             x = np.sort(np.array(self.postSamples[key]).real).squeeze()
 
-            # Get PDF for posterior sample
-            kde = sm.nonparametric.KDEUnivariate(x)
-
-            kde.fit(cut=5)
+            # Estimate the posterior PDF using SciPy's Gaussian KDE. The
+            # bandwidth reproduces the normal-reference rule previously used by
+            # statsmodels for a Gaussian kernel.
+            kde = self._getScipyKDE(x)
 
             # Get PDF for prior
             sprior = self._getScipyDistVersion(self.priors[key])
@@ -118,8 +118,11 @@ class validate():
             null_JS = self._generateJSNullSample(sprior, N, M)
  
             # Compute JS and corresponding p-value for posterior sample            
-            JS = ssd.jensenshannon(sprior.pdf(x), 
-                               kde.evaluate(x.T), base=2)
+            JS = ssd.jensenshannon(
+                sprior.pdf(x),
+                kde(x),
+                base=2,
+            )
  
             pvalue = len(null_JS[null_JS >= JS]) / N
 
@@ -175,6 +178,58 @@ class validate():
 
         return testResult
 
+    def _getScipyKDE(self, sample):
+        """Construct a SciPy Gaussian KDE using normal-reference bandwidth.
+
+        This matches the Gaussian-kernel bandwidth convention previously used
+        by ``statsmodels.nonparametric.KDEUnivariate``.
+
+        Parameters
+        ----------
+        sample : array-like
+            One-dimensional sample used to estimate the density.
+
+        Returns
+        -------
+        scipy.stats.gaussian_kde
+            Fitted Gaussian kernel-density estimate.
+
+        Raises
+        ------
+        ValueError
+            If fewer than two finite samples are available or the sample has
+            zero dispersion.
+        """
+
+        sample = np.asarray(sample, dtype=float).ravel()
+        sample = sample[np.isfinite(sample)]
+
+        if sample.size < 2:
+            raise ValueError(
+                "At least two finite posterior samples are required for a KDE."
+            )
+
+        sample_std = np.std(sample, ddof=1)
+        iqr = np.subtract(*np.percentile(sample, [75, 25]))
+        robust_sigma = min(sample_std, iqr / 1.349)
+
+        if not np.isfinite(robust_sigma) or robust_sigma <= 0:
+            raise ValueError(
+                "Posterior samples must have non-zero finite dispersion."
+            )
+
+        normal_reference_constant = 1.0592238410488122
+        bandwidth = (
+            normal_reference_constant
+            * robust_sigma
+            * sample.size ** (-0.2)
+        )
+
+        return st.gaussian_kde(
+            sample,
+            bw_method=bandwidth / sample_std,
+        )
+
     def _generateJSNullSample(self, prior, N, M, maxArr=1e6):
         """Generate a null distribution of Jensen-Shannon distances.
 
@@ -195,7 +250,7 @@ class validate():
         ndarray
             Flattened sample of null Jensen-Shannon distances.
         """
-         
+                 
         n = int(maxArr//M)
 
         k = int(N//(maxArr//M))

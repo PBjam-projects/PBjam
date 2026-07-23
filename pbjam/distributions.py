@@ -11,7 +11,8 @@ import jax
 import numpy as np
 import jax.scipy.special as jsp
 from pbjam import jar
-import statsmodels.api as sm
+# import statsmodels.api as sm
+import scipy.stats as st
 
 def makeDistObject(data, **kwargs):
     """
@@ -38,73 +39,132 @@ def makeDistObject(data, **kwargs):
 
     return D
 
-def getQuantileFuncs(data, cut=5, densityScale=30, **kwargs):
+def getQuantileFuncs(data, cut=5, densityScale=30):
+    """Scipy replacement for getQuantileFuncs.
+
+    Uses scipy.stats.gaussian_kde with Silverman's rule (matching the
+    statsmodels default) and replicates the support, CDF, PPF, PDF, and
+    log-PDF construction identically.
     """
-    Construct marginal distribution functions from an empirical sample.
+    ppfs, pdfs, cdfs, logpdfs = [], [], [], []
+
+    def _normal_reference_bw_factor(col: np.ndarray) -> float:
+        """Return bw as a scipy bw_method factor (h / std)."""
+        return _normal_reference_bw(col) / col.std(ddof=1)
+
+    def _normal_reference_bw(col: np.ndarray) -> float:
+        """Replicate statsmodels bw_normal_reference for a Gaussian kernel.
+
+        Formula: h = C * A * n^(-1/5)
+        C = 1.0592238410  (normal_reference_constant for Gaussian, nu=2)
+        A = min(std(x, ddof=1), IQR/1.349)   [statsmodels _select_sigma]
+
+        This is derived analytically from the kernel roughness and moments:
+        C = 2 * (pi^0.5 * (nu!)^3 * R(k) / (2*nu * (2nu)! * kap_nu^2))^(1/(2nu+1))
+        with R(k)=1/(2*sqrt(pi)), kap_2=1 for the Gaussian kernel.
+        """
+        _C = 1.0592238410488122  # precomputed: exact for Gaussian kernel, nu=2
+        iqr = np.subtract(*np.percentile(col, [75, 25]))
+        A = min(col.std(ddof=1), iqr / 1.349)
+        return _C * A * len(col) ** (-0.2)
     
-    Each column is treated independently and represented by a univariate kernel
-    density estimate.
-    
-    Parameters
-    ----------
-    data : array-like
-        Two-dimensional sample with shape ``(n_samples, n_dimensions)``.
-    cut : float, optional
-        Number of kernel bandwidths by which the KDE support extends beyond the
-        data range.
-    densityScale : int, optional
-        Multiplier controlling the resolution of the interpolated quantile grid.
-    **kwargs
-        Reserved for compatibility.
-    
-    Returns
-    -------
-    ppfs : list of callable
-        Percent-point functions for each dimension.
-    pdfs : list of callable
-        Probability density functions for each dimension.
-    logpdfs : list of callable
-        Log-probability density functions for each dimension.
-    cdfs : list of array-like
-        Cumulative-density values supplied by the fitted KDE objects.
-    """
-
-    ppfs = []
-
-    pdfs = []
-
-    cdfs = []
-
-    logpdfs = []
-
     for i in range(data.shape[1]):
+        col = np.array(data[:, i]).real
 
-        kde = sm.nonparametric.KDEUnivariate(np.array(data[:, i]).real)
+        bw_factor = _normal_reference_bw_factor(col)
+        kde = st.gaussian_kde(col, bw_method=bw_factor)
+        bw = _normal_reference_bw(col)
 
-        kde.fit(cut=cut)
+        # Replicate statsmodels support grid exactly
+        _SM_SUPPORT_N = 512
+        support = np.linspace(col.min() - cut * bw, col.max() + cut * bw, _SM_SUPPORT_N)
 
-        # TODO currently sampling the unit interval at 5120 points, is this 
-        # enough? Increasing doesn't seem to impact evaluation time of the ppf.
-        A = jnp.linspace(0, 1, densityScale*len(kde.cdf))
+        #PDF
+        pdf_vals = kde(support)
+        pdfs.append(jar.jaxInterp1D(support, pdf_vals))
 
-        cdfs.append(kde.cdf)
-        
-        # The icdf from statsmodels is only evaluated on the input values,
-        # not the complete support of the kde-pdf which may be wider because
-        # of the kernel bandwidth. 
-        x = np.linspace(kde.support[0], kde.support[-1], len(A))
-        Q = jar.getCurvePercentiles(x, 
-                                    kde.evaluate(x),
-                                    percentiles=A)
-        
+        # log PDF
+        logpdfs.append(jar.jaxInterp1D(support, jnp.log(pdf_vals)))
+
+        # CDF: 
+        cdf_vals = np.array([kde.integrate_box_1d(-np.inf, support[j]) for j in range(0, len(support))])
+        cdfs.append(jar.jaxInterp1D(support, cdf_vals))
+
+        # PPF: invert CDF on fine grid (same as original)
+        A = np.linspace(0, 1, densityScale * len(support))
+        x = np.linspace(support[0], support[-1], len(A))    
+        Q = jar.getCurvePercentiles(x, kde(x), percentiles=A)
         ppfs.append(jar.jaxInterp1D(A, Q))
-        
-        # TODO should increase resolution on pdf like on the ppf
-        pdfs.append(jar.jaxInterp1D(kde.support, kde.evaluate(kde.support)))
-
-        logpdfs.append(jar.jaxInterp1D(kde.support, jnp.log(kde.evaluate(kde.support))))
 
     return ppfs, pdfs, logpdfs, cdfs
+
+# def getQuantileFuncs(data, cut=5, densityScale=30, **kwargs):
+#     """
+#     Construct marginal distribution functions from an empirical sample.
+    
+#     Each column is treated independently and represented by a univariate kernel
+#     density estimate.
+    
+#     Parameters
+#     ----------
+#     data : array-like
+#         Two-dimensional sample with shape ``(n_samples, n_dimensions)``.
+#     cut : float, optional
+#         Number of kernel bandwidths by which the KDE support extends beyond the
+#         data range.
+#     densityScale : int, optional
+#         Multiplier controlling the resolution of the interpolated quantile grid.
+#     **kwargs
+#         Reserved for compatibility.
+    
+#     Returns
+#     -------
+#     ppfs : list of callable
+#         Percent-point functions for each dimension.
+#     pdfs : list of callable
+#         Probability density functions for each dimension.
+#     logpdfs : list of callable
+#         Log-probability density functions for each dimension.
+#     cdfs : list of array-like
+#         Cumulative-density values supplied by the fitted KDE objects.
+#     """
+
+#     ppfs = []
+
+#     pdfs = []
+
+#     cdfs = []
+
+#     logpdfs = []
+
+#     for i in range(data.shape[1]):
+
+#         kde = sm.nonparametric.KDEUnivariate(np.array(data[:, i]).real)
+
+#         kde.fit(cut=cut)
+
+#         # TODO currently sampling the unit interval at 5120 points, is this 
+#         # enough? Increasing doesn't seem to impact evaluation time of the ppf.
+#         A = jnp.linspace(0, 1, densityScale*len(kde.cdf))
+
+#         cdfs.append(kde.cdf)
+        
+#         # The icdf from statsmodels is only evaluated on the input values,
+#         # not the complete support of the kde-pdf which may be wider because
+#         # of the kernel bandwidth. 
+#         x = np.linspace(kde.support[0], kde.support[-1], len(A))
+#         Q = jar.getCurvePercentiles(x, 
+#                                     kde.evaluate(x),
+#                                     percentiles=A)
+        
+#         ppfs.append(jar.jaxInterp1D(A, Q))
+        
+#         # TODO should increase resolution on pdf like on the ppf
+#         pdfs.append(jar.jaxInterp1D(kde.support, kde.evaluate(kde.support)))
+
+#         logpdfs.append(jar.jaxInterp1D(kde.support, jnp.log(kde.evaluate(kde.support))))
+
+#     return ppfs, pdfs, logpdfs, cdfs
 
 class beta():
     """

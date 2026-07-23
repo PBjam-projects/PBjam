@@ -38,7 +38,7 @@ classifiers = ["Development Status :: 5 - Production/Stable",
 
 [project.urls]
 Homepage = "https://pbjam.readthedocs.io/"
-Issues = Issues = "https://github.com/PBjam-projects/PBjam/issues"
+Issues = "https://github.com/PBjam-projects/PBjam/issues"
 Documentation = "https://pbjam.readthedocs.io/"
 Repository = "https://github.com/PBjam-projects/PBjam"
  

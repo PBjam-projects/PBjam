@@ -11,11 +11,14 @@ import numpy as np
 from scipy.special import erf
 from functools import partial
 import scipy.special as sc
-import scipy.integrate as si
+# import scipy.integrate as si
 from dataclasses import dataclass
 import pandas as pd
 import pbjam.distributions as dist
 
+_STD_PERCENTILES = (
+    np.array([0.5 - sc.erf(n / np.sqrt(2)) / 2 for n in range(-2, 3)])[::-1] * 100
+)
 class generalModelFuncs():
     """
     A class containing general model functions for various models in PBjam.
@@ -612,44 +615,65 @@ def _trapezoid(y, x):
     except AttributeError:
         return np.trapz(y, x)
 
-def getCurvePercentiles(x, y, cdf=None, percentiles=None):
-    """ Compute percentiles of value along a curve
+# def getCurvePercentiles(x, y, cdf=None, percentiles=None):
+#     """ Compute percentiles of value along a curve
 
-    Computes the cumulative sum of y, normalized to unit maximum. The returned
-    percentiles values are where the cumulative sum exceeds the requested
-    percentiles.
+#     Computes the cumulative sum of y, normalized to unit maximum. The returned
+#     percentiles values are where the cumulative sum exceeds the requested
+#     percentiles.
 
-    Parameters
-    ----------
-    x : array
-        Support for y.
-    y : array
-        Array
-    percentiles: array
+#     Parameters
+#     ----------
+#     x : array
+#         Support for y.
+#     y : array
+#         Array
+#     percentiles: array
 
-    Returns
-    -------
-    percs : array
-        Values of y at the requested percentiles.
-    """
-    if percentiles is None:
-        percentiles = [0.5 - sc.erf(n/np.sqrt(2))/2 for n in range(-2, 3)][::-1]
+#     Returns
+#     -------
+#     percs : array
+#         Values of y at the requested percentiles.
+#     """
+#     if percentiles is None:
+#         percentiles = [0.5 - sc.erf(n/np.sqrt(2))/2 for n in range(-2, 3)][::-1]
 
-    y /= _trapezoid(y, x)
+#     y /= _trapezoid(y, x)
   
-    if cdf is None:
-        cdf = si.cumulative_trapezoid(y, x, initial=0)
-        cdf /= cdf.max()  
+#     if cdf is None:
+#         cdf = si.cumulative_trapezoid(y, x, initial=0)
+#         cdf /= cdf.max()  
          
-    percs = np.zeros(len(percentiles))
+#     percs = np.zeros(len(percentiles))
      
-    for i, p in enumerate(percentiles):
+#     for i, p in enumerate(percentiles):
         
-        q = x[cdf >= p]
+#         q = x[cdf >= p]
           
-        percs[i] = q[0]
+#         percs[i] = q[0]
 
-    return np.sort(percs)
+#     return np.sort(percs)
+
+def getCurvePercentiles(x, y, cdf=None, percentiles=None):
+    if percentiles is None:
+        percentiles = _STD_PERCENTILES
+
+    y = y / np.trapezoid(y, x)
+
+    if cdf is None:
+        dx = np.diff(x)
+    
+        y_mid = (y[:-1] + y[1:]) / 2
+    
+        cdf = np.concatenate([[0], np.cumsum(y_mid * dx)])
+    
+        cdf /= cdf[-1]
+    
+    indices = np.searchsorted(cdf, percentiles)
+    
+    indices = np.clip(indices, 0, len(x) - 1)
+    
+    return np.sort(x[indices])
 
 class jaxInterp1D():
  
