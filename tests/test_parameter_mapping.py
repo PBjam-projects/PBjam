@@ -1,4 +1,4 @@
-"""Regression tests for custom-prior parameter ordering (issue #295)."""
+"""Cross-model tests for parameter mapping and custom-prior ordering."""
 
 from types import SimpleNamespace
 

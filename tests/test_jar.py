@@ -1,6 +1,6 @@
 """Tests for the jar module"""
 
-from pbjam import distributions, jar, samplers
+from pbjam import jar
 import numpy as np
 import numpy.testing as npt #import assert_almost_equal, assert_array_equal
 import jax.numpy as jnp
@@ -72,59 +72,6 @@ def generalModelFuncsClass():
     """
 
     return jar.generalModelFuncs()
-
-@pytest.fixture
-def emceeSamplingClass():
-    """Create an instance of the emcee sampling class class for testing.
-    
-    This class in only ever inherited so should not take any args or kwargs.
-
-    """
-
-    return samplers.EmceeSampling()
-
-@pytest.fixture
-def dynestySamplingClass():
-    """Create an instance of the dynesty sampling class class for testing.
-
-    This class in only ever inherited so should not take any args or kwargs.
-    
-    """
-
-    return samplers.DynestySampling()
-
-class DummyDynestySampler(samplers.DynestySampling):
-    def __init__(self):
-        self.priors = {
-            'x': distributions.uniform(loc=1.0, scale=2.0),
-            'y': distributions.uniform(loc=-1.0, scale=4.0),
-        }
-        self.ndims = len(self.priors)
-
-    def lnlikelihood(self, theta, **kwargs):
-        return -np.sum(np.asarray(theta) ** 2)
-
-def test_DSptform():
-    sampler = DummyDynestySampler()
-
-    theta = sampler.ptform(jnp.array([0.5, 0.5]))
-
-    assert np.allclose(theta, jnp.array([2.0, 1.0]))
-
-def test_DSinitSamples():
-    sampler = DummyDynestySampler()
-
-    u, v, L = sampler.initSamples(ndims=sampler.ndims, nlive=5, nliveMult=3)
-
-    assert u.shape == (5, 2)
-    assert v.shape == (5, 2)
-    assert L.shape == (5,)
-    assert np.all(np.isfinite(L))
-
-@pytest.mark.skip(reason='Dynesty runSampler is an integration test and is too expensive for this unit suite.')
-def test_DSrunSampler():
-    sampler = DummyDynestySampler()
-    sampler.runSampler(minSamples=10, sampler_kwargs={'nlive': 5})
 
 def test_modeUpdoot():
     sample = np.array([[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]])
