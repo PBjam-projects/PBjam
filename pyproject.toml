@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pbjam"
-version = "2.1.1"
+version = "2.2.0"
 authors = [{ name="Martin Nielsen", email="m.b.nielsen.1@bham.ac.uk"},
            { name="Guy Davies", email="g.r.davies@bham.ac.uk"},
            { name="Joel Ong", email="joelong@hawaii.edu"},
@@ -18,7 +18,6 @@ requires-python = ">=3.10"
 license = {file = "LICENSE"}
 dependencies = ["numpy>=2.2.4",
                 "scipy>=1.15.2",
-                "statsmodels>=0.14.4",
                 "matplotlib>=3.10",
                 "pandas>=2.2.3",
                 "lightkurve>=2.5.0",
