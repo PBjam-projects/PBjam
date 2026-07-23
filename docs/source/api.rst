@@ -1,26 +1,18 @@
 API reference
 =============
 
-PBjam has a few high-level interfaces for complete analyses and lower-level
-components for custom workflows.
+PBjam has three main public entry points:
 
-Main interfaces
----------------
+* :class:`pbjam.core.session` coordinates analyses for one or more targets.
+* :class:`pbjam.core.star` coordinates the analysis of a single target.
+* :class:`pbjam.modeID.modeID` and the classes in
+  :mod:`pbjam.peakbagging` provide lower-level interfaces for custom pipelines.
 
-* :class:`pbjam.core.session` coordinates mode identification and peakbagging
-  for one or more targets.
-* :class:`pbjam.core.star` runs the same workflow for a single target when a
-  power density spectrum is already available.
-* :class:`pbjam.modeID.modeID` performs mode identification independently.
-* :class:`pbjam.peakbagging.peakbag` performs detailed peakbagging from an
-  input mode list.
+The remaining modules contain model implementations, probability distributions,
+input/output utilities, plotting helpers, and samplers used by those interfaces.
 
-Supporting modules provide model implementations, probability distributions,
-dimensionality reduction, input/output handling, plotting utilities and
-sampler integrations.
-
-Module reference
-----------------
+Modules
+-------
 
 .. toctree::
    :maxdepth: 1
@@ -38,3 +30,4 @@ Module reference
    peakbagging
    plotting
    samplers
+   validation
