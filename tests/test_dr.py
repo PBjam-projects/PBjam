@@ -2,6 +2,7 @@
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from pbjam import DR
 
@@ -28,7 +29,13 @@ def test_refine_prior_doubles_sigma_inflation_on_retry():
     pca.transform = lambda physical: physical
     pca.setLatentNormalPrior = lambda latent: setattr(pca, 'prior_sample', latent)
 
-    pca.refinePriorByObservables(N=1, minAccepted=2, sigmaInflation=3, rng=DeterministicRNG())
+    with pytest.warns(UserWarning, match="fewer than minAccepted"):
+        pca.refinePriorByObservables(
+            N=1,
+            minAccepted=2,
+            sigmaInflation=3,
+            rng=DeterministicRNG(),
+        )
 
     assert pca.selectivePriorInfo['draws'] == 2
     assert pca.selectivePriorInfo['accepted'] == 2
