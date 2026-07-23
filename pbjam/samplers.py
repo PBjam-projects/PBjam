@@ -1,6 +1,9 @@
-"""
-The samplers modules contains a set of classes which are meant to be inherited by model classes. 
-These classes contain many of the 'standard' methods for sampling with their respective algorithm.
+"""Sampling utilities used by PBjam model classes.
+
+This module provides reusable base classes for posterior sampling with
+:mod:`emcee` and :mod:`dynesty`. Model classes inherit from these helpers and
+supply the model-specific likelihood, priors, parameter unpacking and spectrum
+construction methods.
 """
 
 import dynesty, emcee, time, jax
@@ -11,11 +14,12 @@ import numpy as np
 from functools import partial
 
 class EmceeSampling():
-    """ Class used for handling MCMC sampling with Emcee
+    """Mixin providing ensemble-MCMC sampling with :mod:`emcee`.
 
-    This class is meant to be inherited by various model classes to perform
-    affine invariant sampling using the Emcee package.
-
+    Inheriting classes must define ``priors``, ``ndims``, ``lnlikelihood``,
+    ``unpackParams`` and ``model``. The mixin handles prior evaluation,
+    initialization, burn-in, convergence checks, posterior sampling and storage
+    of the resulting chains.
     """
 
     def __init__(self):
@@ -74,7 +78,7 @@ class EmceeSampling():
         """
         Initializes the starting samples for MCMC chains.
 
-        Draws the samples from the respective parameter priors according the percentiles given by spread.
+        Draws the samples from the respective parameter priors according to the percentiles given by spread.
 
         Parameters
         ----------
@@ -404,8 +408,8 @@ class EmceeSampling():
 
         Parameters
         ----------
-        pos : ndarray, optional
-            The positions of the walkers after the burn-in phase.
+        sampler : emcee.EnsembleSampler
+            Sampler containing the burn-in chain and final walker positions.
         accept_lim: float, optional
             The value below which walkers will be labelled as bad and/or hence
             stuck.
@@ -415,7 +419,7 @@ class EmceeSampling():
         Returns
         -------
         pos : ndarray
-            The positions of the walkers after the low accepatance walkers have
+            The positions of the walkers after the low acceptance walkers have
             been folded into high acceptance distribution.
         
         """
@@ -518,7 +522,7 @@ class EmceeSampling():
         earlyStop : bool, optional
             Whether to stop the burn-in early if convergence is detected. Default is True.
         walltime : float, optional
-            The maximum allowed runtime in minutes. Default is 60.
+            Maximum allowed runtime in minutes. The default is 99999.
         nsamples : int, optional
             The number of independent samples desired. Default is 5000.
         checkEvery : int, optional
@@ -585,6 +589,15 @@ class DynestySampling():
         """
     def __init__(self):        
         pass
+
+    def _scaledLnlikelihood(self, theta, **kwargs):
+        """Apply an optional log-likelihood scaling factor for dynesty.
+
+        Models that do not set ``likelihoodScale`` retain the unscaled
+        likelihood used by previous versions.
+        """
+
+        return getattr(self, 'likelihoodScale', 1.0) * self.lnlikelihood(theta, **kwargs)
     
     @partial(jax.jit, static_argnums=(0,)) # Must stay jitted.
     def ptform(self, u):
@@ -669,7 +682,7 @@ class DynestySampling():
 
         v = np.array([self.ptform(u[i, :]) for i in range(u.shape[0])])
          
-        L = np.array([self.lnlikelihood(v[i, :], **logl_kwargs) for i in range(u.shape[0])])
+        L = np.array([self._scaledLnlikelihood(v[i, :], **logl_kwargs) for i in range(u.shape[0])])
 
         idx = np.isfinite(L)
                 
@@ -717,7 +730,7 @@ class DynestySampling():
             skwargs['live_points'] = self.initSamples(ndims, logl_kwargs=logl_kwargs, **skwargs)
         
         if dynamic:
-            sampler = dynesty.DynamicNestedSampler(self.lnlikelihood, 
+            sampler = dynesty.DynamicNestedSampler(self._scaledLnlikelihood, 
                                                    self.ptform, 
                                                    ndims,  
                                                    **skwargs,
@@ -729,16 +742,16 @@ class DynestySampling():
                                dlogz_init=1e-3 * (skwargs['nlive'] - 1) + 0.01, 
                                nlive_init=skwargs['nlive'])  
             
-            _nsamples = sampler.results.niter
+            # _nsamples = sampler.results.niter
 
-            if _nsamples < minSamples:     
-                missingSamples = minSamples-_nsamples
+            # if _nsamples < minSamples:
+            #     missingSamples = minSamples-_nsamples
 
-                sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
+            #     sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
 
         else:
              
-            sampler = dynesty.NestedSampler(self.lnlikelihood, 
+            sampler = dynesty.NestedSampler(self._scaledLnlikelihood, 
                                             self.ptform, 
                                             ndims,  
                                             **skwargs,
@@ -746,14 +759,14 @@ class DynestySampling():
                                             )
             
             sampler.run_nested(print_progress=progress, 
-                               save_bounds=False, dlogz=0.1,)
+                               save_bounds=False)
 
-            _nsamples = sampler.results.niter + sampler.results.nlive
+            # _nsamples = sampler.results.niter + sampler.results.nlive
             
-            if _nsamples < minSamples:
-                missingSamples = minSamples-_nsamples
+            # if _nsamples < minSamples:
+            #     missingSamples = minSamples-_nsamples
 
-                sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
+            #     sampler.run_nested(dlogz=1e-9, print_progress=progress, save_bounds=False, maxiter=missingSamples)
  
         result = sampler.results
 

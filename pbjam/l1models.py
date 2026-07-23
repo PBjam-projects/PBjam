@@ -214,6 +214,7 @@ class Asyl1model(samplers.DynestySampling, commonFuncs):
     def __init__(self, f, s, obs, addPriors, PCAsamples, vis={'V10': 1.22}, priorPath=None):
 
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.likelihoodScale = 1.0
  
         modelParLabels = ['d01', 'nurot_e',  'inc',]
 
@@ -483,9 +484,12 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
         Dictionary of prior distributions for the model parameters.
     """
 
-    def __init__(self, f, s, obs, addPriors, PCAsamples, PCAdims, vis={'V10': 1.22}, priorPath=None):
+    def __init__(self, f, s, obs, addPriors, PCAsamples, PCAdims, vis={'V10': 1.22}, priorPath=None,
+                 selectivePrior=True, selectivePriorN=10000, selectivePriorMin=100,
+                 selectivePriorSigma=3, selectivePriorSeed=None):
    
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.likelihoodScale = 1.0
         
         modelParLabels = ['p_L', 'p_D', 'DPi1', 'eps_g',
                           'd01', 'dnu', 'numax', 'nurot_c', 
@@ -593,9 +597,13 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
  
         if len(self.pcaLabels) > 0 and not self.badPrior:
 
-            _Y = self.DR.transform(self.DR.dataF)
+            self.DR.setLatentNormalPrior()
 
-            self.DR.ppf, self.DR.pdf, self.DR.logpdf, self.DR.cdf = dist.getQuantileFuncs(_Y)
+            if self.selectivePrior:
+                self.DR.refinePriorByObservables(N=self.selectivePriorN,
+                                                 minAccepted=self.selectivePriorMin,
+                                                 sigmaInflation=self.selectivePriorSigma,
+                                                 rng=self.selectivePriorSeed)
 
             self.latentLabels = ['theta_%i' % (i) for i in range(self.PCAdims)]
 
@@ -617,10 +625,7 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
         self.priors = {}
 
         for i, key in enumerate(self.latentLabels):
-            self.priors[key] = dist.distribution(self.DR.ppf[i], 
-                                                 self.DR.pdf[i], 
-                                                 self.DR.logpdf[i], 
-                                                 self.DR.cdf[i])
+            self.priors[key] = self.DR.latentPriors[i]
 
         AddKeys = [k for k in self.variables if k in self.addPriors.keys()]
 
@@ -690,7 +695,11 @@ class Mixl1model(samplers.DynestySampling, commonFuncs):
 
         thetaU = {key: theta_inv[i] for i, key in enumerate(self.pcaLabels)}
    
-        thetaU.update({key: theta[self.DR.dimsR:][i] for i, key in enumerate(self.addLabels)})
+        # The sampler constructs ``theta`` in ``self.priors`` insertion order.
+        # Custom priors can move parameters out of ``self.addLabels`` order, so
+        # label the non-PCA tail using the actual sampling order.
+        sampledLabels = list(self.priors.keys())[self.DR.dimsR:]
+        thetaU.update({key: theta[self.DR.dimsR:][i] for i, key in enumerate(sampledLabels)})
 
         for key in self.logpars:
             thetaU[key] = 10**thetaU[key]
@@ -1008,6 +1017,7 @@ class RGBl1model(samplers.DynestySampling, commonFuncs):
     def __init__(self, f, s, obs, addPriors, PCAsamples, rootiter=15, vis={'V10': 1.22}, priorPath=None, modelChoice='simple'):
         
         self.__dict__.update((k, v) for k, v in locals().items() if k not in ['self'])
+        self.likelihoodScale = 1.0
   
         modelParLabels = ['d01', 'DPi1', 'teff', 'eps_g', 'q',
                           'nurot_c', 'nurot_e', 'inc', 'dnu',

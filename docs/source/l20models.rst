@@ -1,4 +1,7 @@
-l20models
-^^^^^^^^^
+Radial and quadrupole models
+============================
+
 .. automodule:: pbjam.l20models
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

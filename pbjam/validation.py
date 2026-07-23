@@ -1,11 +1,29 @@
+"""Posterior-versus-prior validation diagnostics.
+
+The :class:`validate` class compares posterior samples with their corresponding
+prior distributions using Kolmogorov-Smirnov tests, Jensen-Shannon distances
+and posterior-to-prior width ratios.
+"""
+
 import scipy.stats as st
-import pbjam.distributions as st
+import pbjam.distributions as dist
 import numpy as np
 import scipy.spatial.distance as ssd
-import statsmodels.api as sm
+# import statsmodels.api as sm
 
 
 class validate():
+    """Compare posterior samples with their prior distributions.
+
+    Parameters
+    ----------
+    priors : dict
+        Mapping from parameter names to PBjam distribution objects. Each object
+        must provide ``pdf``, ``logpdf``, ``cdf`` and ``ppf`` methods.
+    postSamples : dict
+        Mapping from parameter names to posterior sample arrays. Keys must match
+        those in ``priors``.
+    """
 
     def __init__(self, priors, postSamples):
         """
@@ -14,7 +32,7 @@ class validate():
         priors : dict
             Dictionary of prior class instances. Must have the pdf, logpdf, cdf and ppf methods.
             Keywords must correspond to the variables to be compared.
-        posteriorSamples : dict
+        postSamples : dict
             Dictionary of posterior samples. Keywords must correspond to the variables to be compared.
         """
 
@@ -23,7 +41,12 @@ class validate():
         self.ndim = len(self.priors.keys())
 
     def KStest(self, threshold=0.05):
-        """ Method for running KS test on posteriorSamples vs priors
+        """Run one-sample Kolmogorov-Smirnov tests against the priors.
+
+        Parameters
+        ----------
+        threshold : float, optional
+            P-value threshold used to flag statistically significant differences.
 
         Returns
         -------
@@ -82,10 +105,10 @@ class validate():
 
             x = np.sort(np.array(self.postSamples[key]).real).squeeze()
 
-            # Get PDF for posterior sample
-            kde = sm.nonparametric.KDEUnivariate(x)
-
-            kde.fit(cut=5)
+            # Estimate the posterior PDF using SciPy's Gaussian KDE. The
+            # bandwidth reproduces the normal-reference rule previously used by
+            # statsmodels for a Gaussian kernel.
+            kde = self._getScipyKDE(x)
 
             # Get PDF for prior
             sprior = self._getScipyDistVersion(self.priors[key])
@@ -95,8 +118,11 @@ class validate():
             null_JS = self._generateJSNullSample(sprior, N, M)
  
             # Compute JS and corresponding p-value for posterior sample            
-            JS = ssd.jensenshannon(sprior.pdf(x), 
-                               kde.evaluate(x.T), base=2)
+            JS = ssd.jensenshannon(
+                sprior.pdf(x),
+                kde(x),
+                base=2,
+            )
  
             pvalue = len(null_JS[null_JS >= JS]) / N
 
@@ -108,11 +134,18 @@ class validate():
         return testResult
     
     def widthRatio(self, threshold=0.5):
-        """ Method for running prior/posterior width ratio test
+        """Compare posterior and prior widths.
+
+        Parameters
+        ----------
+        threshold : float, optional
+            Maximum posterior-to-prior standard-deviation ratio considered
+            significant.
 
         Returns
         -------
         testResult : dict
+            Width ratios and significance flags for each parameter.
         """
         
         testResult = {'statistic': np.zeros(self.ndim), 'significant': np.zeros(self.ndim, dtype=bool)}
@@ -145,8 +178,79 @@ class validate():
 
         return testResult
 
+    def _getScipyKDE(self, sample):
+        """Construct a SciPy Gaussian KDE using normal-reference bandwidth.
+
+        This matches the Gaussian-kernel bandwidth convention previously used
+        by ``statsmodels.nonparametric.KDEUnivariate``.
+
+        Parameters
+        ----------
+        sample : array-like
+            One-dimensional sample used to estimate the density.
+
+        Returns
+        -------
+        scipy.stats.gaussian_kde
+            Fitted Gaussian kernel-density estimate.
+
+        Raises
+        ------
+        ValueError
+            If fewer than two finite samples are available or the sample has
+            zero dispersion.
+        """
+
+        sample = np.asarray(sample, dtype=float).ravel()
+        sample = sample[np.isfinite(sample)]
+
+        if sample.size < 2:
+            raise ValueError(
+                "At least two finite posterior samples are required for a KDE."
+            )
+
+        sample_std = np.std(sample, ddof=1)
+        iqr = np.subtract(*np.percentile(sample, [75, 25]))
+        robust_sigma = min(sample_std, iqr / 1.349)
+
+        if not np.isfinite(robust_sigma) or robust_sigma <= 0:
+            raise ValueError(
+                "Posterior samples must have non-zero finite dispersion."
+            )
+
+        normal_reference_constant = 1.0592238410488122
+        bandwidth = (
+            normal_reference_constant
+            * robust_sigma
+            * sample.size ** (-0.2)
+        )
+
+        return st.gaussian_kde(
+            sample,
+            bw_method=bandwidth / sample_std,
+        )
+
     def _generateJSNullSample(self, prior, N, M, maxArr=1e6):
-         
+        """Generate a null distribution of Jensen-Shannon distances.
+
+        Parameters
+        ----------
+        prior : scipy.stats distribution
+            Prior distribution used to generate comparison samples.
+        N : int
+            Requested number of null realizations.
+        M : int
+            Number of draws in each realization.
+        maxArr : float, optional
+            Approximate upper limit on the number of array elements allocated at
+            once.
+
+        Returns
+        -------
+        ndarray
+            Flattened sample of null Jensen-Shannon distances.
+        """
+                 
         n = int(maxArr//M)
 
         k = int(N//(maxArr//M))
@@ -166,7 +270,17 @@ class validate():
         return null_JS.flatten()
     
     def _getScipyDistVersion(self, prior):
-        """ This is a hack for getting the Scipy version of the distribution.
+        """Convert a supported PBjam distribution to its SciPy equivalent.
+
+        Parameters
+        ----------
+        prior : pbjam.distributions distribution
+            PBjam normal or beta distribution.
+
+        Returns
+        -------
+        scipy.stats distribution
+            Frozen SciPy distribution with matching parameters.
         """
         priorType = prior.__class__.__name__
         
@@ -184,6 +298,23 @@ class validate():
         return priorCls(**distKwargs)
 
     def _runValidationMethod(self, method_name):
+        """Run a named validation method.
+
+        Parameters
+        ----------
+        method_name : str
+            Name of a callable validation method on this instance.
+
+        Returns
+        -------
+        dict
+            Result returned by the selected validation method.
+
+        Raises
+        ------
+        AttributeError
+            If the requested method is unavailable.
+        """
         method = getattr(self, method_name, None)  # Get method if it exists
 
         if callable(method):  # Check if it's actually a method
@@ -193,6 +324,18 @@ class validate():
             raise AttributeError(f"Method '{method_name}' not found")
         
     def __call__(self, tests='all'):
+        """Run one or more validation diagnostics.
+
+        Parameters
+        ----------
+        tests : {'all', 'kstest', 'jstest', 'widthratio'} or list of str, optional
+            Tests to run. ``'all'`` runs every available diagnostic.
+
+        Returns
+        -------
+        dict
+            Mapping from normalized test names to their result dictionaries.
+        """
 
         availableTests = ['kstest', 'jstest', 'widthratio']
         

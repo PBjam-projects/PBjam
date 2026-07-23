@@ -6,14 +6,26 @@ of the power density spectrum.
 from pbjam import jar 
 
 class bkgModel():
+    """
+    Evaluate the background model of a power density spectrum.
+    
+    Parameters
+    ----------
+    nu : array-like
+        Frequency axis at which the model is evaluated.
+    Nyquist : float
+        Nyquist frequency in the same units as ``nu``.
+    """
     def __init__(self, nu, Nyquist):
         """
-        Initialize the background model calculator.
-
+        Evaluate the background model of a power density spectrum.
+        
         Parameters
         ----------
+        nu : array-like
+            Frequency axis at which the model is evaluated.
         Nyquist : float
-            Nyquist frequency.
+            Nyquist frequency in the same units as ``nu``.
         """
         self.nu = nu
 
@@ -22,23 +34,24 @@ class bkgModel():
         self.eta = jar.attenuation(self.nu, self.Nyquist)**2
  
     def harvey(self, nu, a, b, c):
-        """ Harvey-profile
-
+        """
+        Evaluate a Harvey-like background component.
+        
         Parameters
         ----------
-        nu : np.array
-            Frequency axis of the PSD.
+        nu : array-like
+            Frequency axis.
         a : float
-            The amplitude (divided by 2 pi) of the Harvey-like profile.
+            Power-scale parameter of the Harvey-like component.
         b : float
-            The characeteristic frequency of the Harvey-like profile.
+            Characteristic frequency.
         c : float
-            The exponent parameter of the Harvey-like profile.
-
+            Exponent controlling the high-frequency slope.
+        
         Returns
         -------
-        H : np.array
-            The Harvey-like profile given the relevant parameters.
+        array-like
+            Harvey-like component evaluated at ``nu``.
         """
          
         H = a / b * 1 / (1 + (nu / b)**c)
@@ -47,26 +60,19 @@ class bkgModel():
  
     def __call__(self, theta_u,):
         """
-        Calculate the background model.
-
+        Evaluate the complete background model.
+        
         Parameters
         ----------
         theta_u : dict
-            A dictionary of background model parameters.
-        nu : numpy.ndarray
-            Array of frequency values.
-
+            Background parameters. Required keys are ``H_power``, ``H1_nu``,
+            ``H1_exp``, ``H2_nu``, ``H2_exp``, ``H3_power``, ``H3_nu``,
+            ``H3_exp``, and ``shot``.
+        
         Returns
         -------
-        array
-            The calculated background model.
-
-        Notes
-        -----
-        - Computes the Harvey components H1, H2, and H3 for the given frequency values.
-        - Calculates the attenuation factor eta.
-        - Combines the Harvey components with the attenuation factor and shot noise to
-          compute the background model.
+        array-like
+            Sum of the attenuated Harvey-like components and the shot-noise level.
         """
 
         H1 = self.harvey(self.nu, theta_u['H_power'], theta_u['H1_nu'], theta_u['H1_exp'],)

@@ -73,45 +73,35 @@ def generalModelFuncsClass():
 
     return jar.generalModelFuncs()
 
-@pytest.fixture
-def emceeSamplingClass():
-    """Create an instance of the emcee sampling class class for testing.
-    
-    This class in only ever inherited so should not take any args or kwargs.
-
-    """
-
-    return jar.EmceeSampling()
-
-@pytest.fixture
-def dynestySamplingClass():
-    """Create an instance of the dynesty sampling class class for testing.
-
-    This class in only ever inherited so should not take any args or kwargs.
-    
-    """
-
-    return jar.DynestySampling()
-
-def test_DSptform():
-    pass   
-
-def test_DSinitSamples():
-    pass
-
-def test_DSrunSampler():
-    pass
-
 def test_modeUpdoot():
-    jar.modeUpdoot
-    pass
+    sample = np.array([[1.0, 4.0], [2.0, 5.0], [3.0, 6.0]])
+    result = {
+        'summary': {'freq': np.empty((2, 0))},
+        'samples': {'freq': np.empty((sample.shape[0], 0))},
+    }
+
+    jar.modeUpdoot(result, sample, 'freq', Nmodes=2)
+
+    assert result['summary']['freq'].shape == (2, 2)
+    assert result['samples']['freq'].shape == sample.shape
+    assert np.allclose(result['summary']['freq'][0], [2.0, 5.0])
+    assert np.allclose(result['samples']['freq'], sample)
 
 def test_smryStats():
-    jar.smryStats
-    pass
+    stats = jar.smryStats(np.array([1.0, 2.0, 3.0]))
+
+    assert stats.shape == (2,)
+    assert stats[0] == 2.0
+    assert stats[1] > 0
 
 def test_envelope():
-    pass
+    nu = jnp.array([90.0, 100.0, 110.0])
+    env = jar.envelope(nu, env_height=3.0, numax=100.0, env_width=10.0)
+
+    assert type(env) is type(nu)
+    assert env[1] == 6.0
+    assert env[0] == env[2]
+    assert env[0] < env[1]
 
 def test_attenuation():
     """Some tests for attenuation function in jar"""
@@ -230,4 +220,46 @@ def test_gaussian():
     assert jar.gaussian(mu, A, mu, sigma) == A
 
 
+class DummyObsLikelihoodModel(jar.generalModelFuncs):
+    def __init__(self):
+        self.obs = {
+            'numax': (100.0, 10.0),
+            'dnu': (10.0, 1.0),
+            'teff': (5800.0, 100.0),
+            'bp_rp': (0.8, 0.1),
+        }
+        self.s = jnp.array([0.0])
+        self.setAddObs(keys=['numax', 'dnu', 'teff', 'bp_rp', 'missing'])
 
+    def unpackParams(self, theta):
+        return {
+            'numax': theta[0],
+            'dnu': theta[1],
+            'teff': theta[2],
+            'bp_rp': theta[3],
+        }
+
+    def model(self, thetaU):
+        return jnp.array([1.0])
+
+
+def test_additional_observables_are_used_in_full_likelihood():
+    model = DummyObsLikelihoodModel()
+    theta = jnp.array([100.0, 10.0, 5800.0, 0.8])
+
+    expected = sum(obs.logpdf(theta[i]) for i, obs in enumerate(model.addObs.values()))
+
+    assert set(model.addObs) == {'numax', 'dnu', 'teff', 'bp_rp'}
+    assert np.isclose(model.lnlikelihood(theta), expected)
+
+
+def test_setAddObs_skips_missing_and_invalid_constraints():
+    model = jar.generalModelFuncs()
+    model.obs = {
+        'teff': (5800.0, 100.0),
+        'bp_rp': (0.8, 0.0),
+    }
+
+    model.setAddObs(keys=['numax', 'teff', 'bp_rp'])
+
+    assert set(model.addObs) == {'teff'}

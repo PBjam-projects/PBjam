@@ -1,17 +1,17 @@
-"""
+"""Mode identification for solar-like oscillators.
 
-This module contains the mode identification class for PBjam.
+This module provides :class:`modeID`, the PBjam interface for estimating the
+locations and properties of oscillation modes before detailed peakbagging. The
+mode-identification stage selects a model family from the input ``teff`` and
+``dnu`` before fitting. Main-sequence stars are fit with a combined ``l=0,1,2``
+model. Subgiants and red giants are fit with the background plus ``l=2,0`` modes
+first, then the ``l=1`` modes on the residual spectrum.
 
-The general mode ID strategy is to model the background + l=2,0 components 
-separately from the l=1 modes, since the latter are often more computationally 
-difficult.
-
-This provides the inputs for the detailed peakbagging stage which is provided as 
-a separate module.
-
-Several plotting options are available to display the results, including `echelle`, 
-`spectrum` and `corner`.
-
+The merged output from this stage is intended as the input to the detailed
+peakbagging classes. Since :class:`modeID` inherits from
+:class:`pbjam.plotting.plotting`, the resulting object can also use plotting
+helpers such as ``echelle``, ``spectrum`` and ``corner`` after a model has been
+run.
 """
 
 import warnings, os, pickle
@@ -19,30 +19,60 @@ import jax.numpy as jnp
 import numpy as np
 from pbjam.l1models import Asyl1model, Mixl1model, RGBl1model
 from pbjam.l20models import Asyl20model
+from pbjam.MSmodels import Asyl021model
 from pbjam.plotting import plotting
 from pbjam import IO
 import pandas as pd
 
 class modeID(plotting, ):  
-    """
-    Class for identifying modes in solar-like oscillators.
+    """Identify oscillation modes in a power density spectrum.
+
+    The class stores the input spectrum, prepares a frequency window around
+    ``numax``, runs the ``l=2,0`` and ``l=1`` mode-identification models, and
+    merges their results into ``self.result``. Observational constraints are
+    supplied through ``obs`` and must include at least ``numax``, ``dnu`` and
+    ``teff`` as ``(value, uncertainty)`` pairs. Optional constraints such as
+    ``bp_rp`` can be included when they are available.
 
     Parameters
     ----------
     f : array-like
-        The frequency array of the spectrum.
+        Frequency bins of the power density spectrum, in microhertz.
     s : array-like
-        The values of the power density spectrum.
+        Power density values corresponding to ``f``.
     obs : dict
-        Dictionary of observational inputs.
+        Observational constraints. Required keys are ``'numax'``, ``'dnu'`` and
+        ``'teff'``. Values are two-element sequences containing the measured
+        value and its uncertainty, for example ``{'numax': (100.0, 5.0)}``.
     addPriors : dict, optional
-        Additional priors to be added. Default is an empty dictionary.
+        Additional or overriding priors passed to the underlying model classes.
+        The expected structure depends on the selected model parameter.
     N_p : int, optional
-        Number of radial orders to use for mode identification. Default is 7.
+        Number of radial orders to identify. Default is 7.
     freqLimits : list, optional
-        Frequency limits for mode identification. If None, it is calculated based on 'numax' and 'dnu'.
+        Two-element ``[lower, upper]`` frequency window in microhertz. If
+        ``None``, PBjam builds a window around ``numax`` using ``dnu`` and
+        ``N_p``.
     priorPath : str, optional
-        Path to prior sample csv. If None, a default path is used.
+        Path to the prior sample CSV file. If ``None``, PBjam uses the packaged
+        default prior table.
+    **kwargs
+        Additional attributes stored on the instance for downstream plotting or
+        model configuration.
+
+    Attributes
+    ----------
+    f, s : jax.numpy.ndarray
+        Input spectrum converted to JAX arrays.
+    sel : ndarray of bool
+        Mask selecting the spectrum inside ``freqLimits``.
+    l20result, l1result : dict
+        Parsed results from the individual model stages, created after
+        ``runl20model`` and ``runl1model`` respectively.
+    result : dict
+        Merged result dictionary created after either ``runl20model`` or
+        ``runl1model``. It contains top-level mode labels and nested ``summary``
+        and ``samples`` dictionaries.
     """
 
     def __init__(self, f, s, obs, addPriors={}, N_p=7, freqLimits=None, priorPath=None, **kwargs):
@@ -57,42 +87,80 @@ class modeID(plotting, ):
 
         # Set frequency range to compute the model on. Default is one radial order above/below the requested number.
         if self.freqLimits is None:
-            self.freqLimits = [self.obs['numax'][0] - self.obs['dnu'][0]*(self.N_p//2+1), 
-                               self.obs['numax'][0] + self.obs['dnu'][0]*(self.N_p//2+1),]
+            self.freqLimits = [self.obs['numax'][0] - self.obs['dnu'][0]*(self.N_p//2+5), 
+                               self.obs['numax'][0] + self.obs['dnu'][0]*(self.N_p//2+5),]
             
         self.sel = (np.array(self.freqLimits).min() < self.f) & (self.f < np.array(self.freqLimits).max())   
 
         if self.priorPath is None:
             self.priorPath = IO._getPriorPath()
  
-    def runl20model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, PCAsamples=50, PCAdims=6, **kwargs):
-        """
-        Runs the l20 model on the selected spectrum.
+    def runl20model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
+                    loglikelihoodMultiplier=1.0, PCAsamples=50, PCAdims=6, selectivePrior=True,
+                    selectivePriorN=10000, selectivePriorMin=100, selectivePriorSigma=1,
+                    selectivePriorSeed=None, **kwargs):
+        """Fit the background plus ``l=2,0`` modes.
+
+        This is the first mode-identification stage. It fits the selected part
+        of the spectrum with :class:`pbjam.l20models.Asyl20model`, stores the
+        model instance on ``self.l20model``, stores raw posterior samples on
+        ``self.l20Samples``, stores parsed results on ``self.l20result``, and
+        initializes ``self.result`` with the merged ``l=2,0`` output.
 
         Parameters
         ----------
         progress : bool, optional
-            Whether to show progress during the model run. Default is True.
+            Whether dynesty should show sampler progress. Default is ``True``.
         dynamic : bool, optional
-            Whether to use dynamic nested sampling. Default is False (static nested sampling).
+            Whether to use dynamic nested sampling. Default is ``False``.
         minSamples : int, optional
-            The minimum number of samples to generate. Default is 5000.
+            Minimum number of posterior samples requested from the sampler.
+            Default is 5000.
+        sampler_kwargs : dict, optional
+            Extra keyword arguments passed to the dynesty sampler.
         logl_kwargs : dict, optional
-            Additional keyword arguments for the log-likelihood function. Default is an empty dictionary.
+            Extra keyword arguments passed to the log-likelihood function.
+        loglikelihoodMultiplier : float, optional
+            Multiplier applied to the final log-likelihood value passed to the
+            nested sampler. Default is 1.0.
         PCAsamples : int, optional
-            Number of samples for PCA. Default is 50.
+            Number of prior samples used in the PCA-based prior construction.
+            Default is 50.
         PCAdims : int, optional
-            Number of dimensions for PCA. Default is 6.
+            Number of PCA dimensions retained for the ``l=2,0`` prior model.
+            Default is 6.
+        selectivePrior : bool, optional
+            Whether to refine the prior sample around the observed constraints.
+            Default is ``True``.
+        selectivePriorN : int, optional
+            Number of candidate prior samples considered during selective prior
+            refinement.
+        selectivePriorMin : int, optional
+            Minimum number of accepted selective-prior samples before warning.
+        selectivePriorSigma : float, optional
+            Width, in observational standard deviations, of the selective-prior
+            acceptance region.
+        selectivePriorSeed : int, optional
+            Seed used by the selective-prior sampler. ``None`` leaves the draw
+            unseeded.
+        **kwargs
+            Accepted for API compatibility; currently not used by this method.
 
         Returns
         -------
         result : dict
-            Parsed results from the l20 model.
+            Parsed ``l=2,0`` result dictionary.
         """
 
         f = self.f[self.sel]
 
         s = self.s[self.sel]
+
+        selectiveKwargs = {'selectivePrior': selectivePrior,
+                           'selectivePriorN': selectivePriorN,
+                           'selectivePriorMin': selectivePriorMin,
+                           'selectivePriorSigma': selectivePriorSigma,
+                           'selectivePriorSeed': selectivePriorSeed}
 
         self.l20model = Asyl20model(f, s, 
                                     self.obs, 
@@ -100,7 +168,10 @@ class modeID(plotting, ):
                                     self.N_p, 
                                     PCAsamples, 
                                     PCAdims,
-                                    priorPath=self.priorPath)
+                                    priorPath=self.priorPath,
+                                    **selectiveKwargs)
+
+        self.l20model.likelihoodScale = float(loglikelihoodMultiplier)
         
         self.l20Samples = self.l20model.runSampler(progress=progress,
                                                    dynamic=dynamic,
@@ -116,35 +187,152 @@ class modeID(plotting, ):
  
         return self.l20result
 
-    def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={}, model='auto', PCAsamples=500, PCAdims=7, **kwargs):
-        """
-        Runs the l1 model on the selected spectrum.
-
-        Should follow the l20 model run.
+    def runMSmodel(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
+                   loglikelihoodMultiplier=1.0, PCAsamples=50, PCAdims=6, selectivePrior=True,
+                   selectivePriorN=10000, selectivePriorMin=100, selectivePriorSigma=1,
+                   selectivePriorSeed=None, **kwargs):
+        """Fit the main-sequence ``l=0,1,2`` model in one stage.
 
         Parameters
         ----------
         progress : bool, optional
-            Whether to show progress during the model run. Default is True.
+            Whether dynesty should display sampler progress.
         dynamic : bool, optional
-            Whether to use dynamic nested sampling. Default is False (static nested sampling).
+            Whether to use dynamic nested sampling.
         minSamples : int, optional
-            The minimum number of samples to generate. Default is 5000.
+            Minimum number of posterior samples requested from the sampler.
         sampler_kwargs : dict, optional
-            Additional keyword arguments for the sampler. Default is an empty dictionary.
+            Additional keyword arguments passed to the dynesty sampler.
         logl_kwargs : dict, optional
-            Additional keyword arguments for the log-likelihood function. Default is an empty dictionary.
-        model : str
-            Choice of which model to use for estimating the l=1 mode locations. Choices are MS, SG, RGB models.
+            Additional keyword arguments passed to the log-likelihood function.
+        loglikelihoodMultiplier : float, optional
+            Multiplicative factor applied to the model log-likelihood.
         PCAsamples : int, optional
-            Number of samples for PCA. Default is 100.
+            Number of neighbouring prior samples used to construct the PCA prior.
         PCAdims : int, optional
-            Number of dimensions for PCA. Default is 5.
+            Number of retained principal components.
+        selectivePrior : bool, optional
+            Whether to refine the PCA prior using the observational constraints.
+        selectivePriorN : int, optional
+            Number of candidate samples used during selective-prior refinement.
+        selectivePriorMin : int, optional
+            Minimum accepted sample count for the refined prior.
+        selectivePriorSigma : float, optional
+            Width of the selective-prior acceptance region in observational
+            standard deviations.
+        selectivePriorSeed : int, optional
+            Random seed used during selective-prior refinement.
+        **kwargs
+            Reserved for API compatibility.
+
+        Returns
+        -------
+        dict
+            Parsed mode-identification result for the combined main-sequence
+            model.
+        """
+
+        f = self.f[self.sel]
+
+        s = self.s[self.sel]
+
+        selectiveKwargs = {'selectivePrior': selectivePrior,
+                           'selectivePriorN': selectivePriorN,
+                           'selectivePriorMin': selectivePriorMin,
+                           'selectivePriorSigma': selectivePriorSigma,
+                           'selectivePriorSeed': selectivePriorSeed}
+
+        self.MSmodel = Asyl021model(f, s,
+                                    self.obs,
+                                    self.addPriors,
+                                    self.N_p,
+                                    PCAsamples,
+                                    PCAdims,
+                                    priorPath=self.priorPath,
+                                    **selectiveKwargs)
+
+        self.MSmodel.likelihoodScale = float(loglikelihoodMultiplier)
+
+        self.MSSamples = self.MSmodel.runSampler(progress=progress,
+                                                 dynamic=dynamic,
+                                                 minSamples=minSamples,
+                                                 logl_kwargs=logl_kwargs,
+                                                 sampler_kwargs=sampler_kwargs)
+
+        MSSamplesU = self.MSmodel.unpackSamples(self.MSSamples)
+
+        self.MSresult = self.MSmodel.parseSamples(MSSamplesU)
+
+        self.result = self.MSresult
+
+        return self.MSresult
+
+    def runl1model(self, progress=True, dynamic=False, minSamples=5000, sampler_kwargs={}, logl_kwargs={},
+                   model='auto', loglikelihoodMultiplier=1.0, PCAsamples=500, PCAdims=7,
+                   selectivePrior=True, selectivePriorN=10000, selectivePriorMin=100,
+                   selectivePriorSigma=1, selectivePriorSeed=None, **kwargs):
+        """Fit the ``l=1`` modes on the ``l=2,0`` residual spectrum.
+
+        This method should be called after :meth:`runl20model`, because it uses
+        the median ``l=2,0`` model to divide the selected spectrum and fit the
+        dipole modes in the residual. The parsed results are stored on
+        ``self.l1result`` and merged with ``self.l20result`` into
+        ``self.result``.
+
+        Parameters
+        ----------
+        progress : bool, optional
+            Whether dynesty should show sampler progress. Default is ``True``.
+        dynamic : bool, optional
+            Whether to use dynamic nested sampling. Default is ``False``.
+        minSamples : int, optional
+            Minimum number of posterior samples requested from the sampler.
+            Default is 5000.
+        sampler_kwargs : dict, optional
+            Extra keyword arguments passed to the dynesty sampler.
+        logl_kwargs : dict, optional
+            Extra keyword arguments passed to the log-likelihood function.
+        model : {'auto', 'ms', 'sg', 'rgb'}, optional
+            Model family used for the dipole modes. ``'auto'`` selects from the
+            observed ``dnu`` and ``teff`` values. ``'ms'`` uses the asymptotic
+            main-sequence model, ``'sg'`` uses the mixed-mode subgiant model,
+            and ``'rgb'`` uses the red-giant branch model.
+        loglikelihoodMultiplier : float, optional
+            Multiplier applied to the final log-likelihood value passed to the
+            nested sampler. Default is 1.0.
+        PCAsamples : int, optional
+            Number of prior samples used in the PCA-based prior construction
+            for models that use PCA priors. Default is 500.
+        PCAdims : int, optional
+            Number of PCA dimensions retained for the subgiant prior model.
+            Default is 7.
+        selectivePrior : bool, optional
+            Whether to refine the prior sample around the observed constraints
+            for model families that support selective priors.
+        selectivePriorN : int, optional
+            Number of candidate prior samples considered during selective prior
+            refinement.
+        selectivePriorMin : int, optional
+            Minimum number of accepted selective-prior samples before warning.
+        selectivePriorSigma : float, optional
+            Width, in observational standard deviations, of the selective-prior
+            acceptance region.
+        selectivePriorSeed : int, optional
+            Seed used by the selective-prior sampler. ``None`` leaves the draw
+            unseeded.
+        **kwargs
+            Accepted for API compatibility; currently not used by this method.
 
         Returns
         -------
         result : dict
-            Parsed results from the l1 model.
+            Parsed ``l=1`` result dictionary.
+
+        Raises
+        ------
+        ValueError
+            If ``model`` is not one of ``'auto'``, ``'ms'``, ``'sg'`` or
+            ``'rgb'``.
         """
 
         # Compute the l=2,0 model residual. 
@@ -153,6 +341,12 @@ class modeID(plotting, ):
         f = self.f[self.sel]
 
         s = self.l20residual
+
+        selectiveKwargs = {'selectivePrior': selectivePrior,
+                           'selectivePriorN': selectivePriorN,
+                           'selectivePriorMin': selectivePriorMin,
+                           'selectivePriorSigma': selectivePriorSigma,
+                           'selectivePriorSeed': selectivePriorSeed}
 
         summary = {'n_p': self.l20result['enn'][self.l20result['ell']==0],
                    'nu0_p': self.l20result['summary']['freq'][0, self.l20result['ell']==0]}
@@ -179,7 +373,8 @@ class modeID(plotting, ):
                                       self.addPriors,
                                       PCAsamples, 
                                       PCAdims,
-                                      priorPath=self.priorPath)
+                                      priorPath=self.priorPath,
+                                      **selectiveKwargs)
             
         elif model.lower() == 'rgb':
             self.l1model = RGBl1model(f, s,  
@@ -191,6 +386,8 @@ class modeID(plotting, ):
                                       modelChoice='simple')
         else:
             raise ValueError(f'Model {model} is invalid. Please use either MS, SG or RGB.')
+
+        self.l1model.likelihoodScale = float(loglikelihoodMultiplier)
          
         self.l1Samples  = self.l1model.runSampler(progress=progress,
                                                   dynamic=dynamic,
@@ -206,50 +403,116 @@ class modeID(plotting, ):
 
         return self.l1result
 
-    def __call__(self, model='auto', progress=True, dynamic=False, sampler_kwargs={}, logl_kwargs={}, **kwargs):
-        """
-        Run both the l20 and l1 models.
+    def _unpackPriorKwargs(self, prior_kwargs, runkey):
+        """Return prior kwargs for a specific mode-identification run method."""
 
-        The results are stored in the modeID.result dictionary after each step is 
-        completed.
+        if prior_kwargs is None:
+            return {}
+
+        aliases = {
+            'ms': ['ms', 'MS', 'MSmodel', 'runMSmodel'],
+            'l20': ['l20', 'l02', '20', '02', 'runl20model'],
+            'l1': ['l1', '1', 'runl1model'],
+        }
+
+        nested_keys = {key for values in aliases.values() for key in values}
+
+        run_kwargs = {key: value for key, value in prior_kwargs.items() if key not in nested_keys}
+
+        for key in aliases[runkey]:
+            if key in prior_kwargs:
+                run_kwargs.update(prior_kwargs[key])
+
+        return run_kwargs
+
+    def __call__(self, model='auto', progress=True, dynamic=False, sampler_kwargs={}, logl_kwargs={},
+                 loglikelihoodMultiplier=1.0, prior_kwargs=None, **kwargs):
+        """Run the full mode-identification workflow.
+
+        Calling a :class:`modeID` instance selects the mode-identification model
+        from the observed ``teff`` and ``dnu`` before fitting. Main-sequence
+        stars use the combined ``l=0,1,2`` model. Subgiants and red giants use
+        the two-stage ``l=2,0`` then ``l=1`` workflow.
 
         Parameters
         ----------
+        model : {'auto', 'ms', 'sg', 'rgb'}, optional
+            Dipole-mode model selection passed to :meth:`runl1model`.
         progress : bool, optional
-            Whether to show progress during the model run. Default is True.
+            Whether dynesty should show sampler progress.
+        dynamic : bool, optional
+            Whether both stages should use dynamic nested sampling.
         sampler_kwargs : dict, optional
-            Additional keyword arguments for the sampler. Default is an empty dictionary.
+            Extra keyword arguments passed to both samplers.
         logl_kwargs : dict, optional
-            Additional keyword arguments for the log-likelihood function. Default is an empty dictionary.
+            Extra keyword arguments passed to both likelihood functions.
+        loglikelihoodMultiplier : float, optional
+            Multiplier applied to the final model log-likelihood values
+            passed to the nested sampler. Default is 1.0.
+        prior_kwargs : dict, optional
+            Keyword arguments passed to the prior/PCA setup of the selected run
+            methods, such as ``PCAsamples``, ``PCAdims`` and selective-prior
+            options. Flat keys are passed to every run method. Nested keys
+            ``'ms'``, ``'l20'`` and ``'l1'`` override the flat values for that
+            specific run method.
+        **kwargs
+            Accepted for API compatibility; currently not used by this method.
         """
-         
-        self.runl20model(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs)
+
+        ms_prior_kwargs = self._unpackPriorKwargs(prior_kwargs, 'ms')
+        l20_prior_kwargs = self._unpackPriorKwargs(prior_kwargs, 'l20')
+        l1_prior_kwargs = self._unpackPriorKwargs(prior_kwargs, 'l1')
+
+        if model.lower() == 'auto':
+            model = self.selectModel()
+
+            print(f'Input Teff={self.obs["teff"][0]}K and dnu={self.obs["dnu"][0]}muHz suggests the appropriate l=1 model is: {model}')
+
+        model = model.lower()
+
+        if model == 'ms':
+            self.runMSmodel(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
+                            loglikelihoodMultiplier=loglikelihoodMultiplier, **ms_prior_kwargs)
+
+            return
+
+        if model not in ['sg', 'rgb']:
+            raise ValueError(f'Model {model} is invalid. Please use either MS, SG or RGB.')
+
+        self.runl20model(progress, dynamic, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
+                         loglikelihoodMultiplier=loglikelihoodMultiplier, **l20_prior_kwargs)
         
-        self.runl1model(progress, dynamic, model=model, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs)
+        self.runl1model(progress, dynamic, model=model, sampler_kwargs=sampler_kwargs, logl_kwargs=logl_kwargs,
+                        loglikelihoodMultiplier=loglikelihoodMultiplier, **l1_prior_kwargs)
  
     def mergeResults(self, l20result=None, l1result=None, N=5000):
-        """
-        Merges results from l20 and l1 models into a single result dictionary. 
+        """Merge ``l=2,0`` and ``l=1`` model outputs.
 
         Attempts to include N samples from both models, but will use the lowest common
         value in case one of the models returns less than N samples.
 
-        Note that if l20 and l1 share any parameters (like numax and dnu) the results 
-        from the l20 model are used since they are probably a bit more reliable.
+        If both stages provide the same scalar parameter, such as ``numax`` or
+        ``dnu``, the ``l=2,0`` value is retained because that stage generally
+        provides the more stable estimate.
 
         Parameters
         ----------
         l20result : dict, optional
-            The result dictionary from the l20 model. 
+            Result dictionary from :meth:`runl20model`. If ``None``, the method
+            uses ``self.l20result`` when available.
         l1result : dict, optional
-            The result dictionary from the L1 model. 
+            Result dictionary from :meth:`runl1model`. If ``None``, the method
+            uses ``self.l1result`` when available.
         N : int, optional
-            The number of samples to include in the merged results. Default is 5000.
+            Maximum number of samples to include in the merged result. The
+            returned sample count is the minimum of ``N`` and the available
+            sample counts from the supplied model results.
 
         Returns
         -------
         R : dict
-            A dictionary containing merged results from the l20 and l1 models.
+            Merged result dictionary with mode labels ``ell``, ``enn``, ``emm``
+            and ``zeta``, plus nested ``summary`` and ``samples`` dictionaries.
         """
 
         # Initialize an empty result dictionary
@@ -312,19 +575,26 @@ class modeID(plotting, ):
         return R
 
     def storeResult(self, resultDict, path=None, ID=None):
-        """
-        Stores the results in a specified directory with identifier. The results are stored as a 
-        pickled Python dictionary file and a CSV file. The pickle file contains all results,
-        while the CSV file contains only the summary model parameters.
+        """Write mode-identification results to disk.
+
+        The method writes two files named ``<ID>_modeIDresult.pkl`` and
+        ``<ID>_modeIDresult.csv`` inside ``path``. The pickle contains the full
+        result dictionary. The CSV contains scalar summary parameters from
+        ``self.result['summary']`` and omits per-mode arrays such as frequency,
+        height and width.
 
         Parameters
         ----------
         resultDict : dict
-            The dictionary containing the results to be stored.
+            Result dictionary to serialize to the pickle file, typically
+            ``self.result``.
         path : str, optional
-            The directory path where the results should be stored. If None, it defaults to the current directory.
+            Directory where output files should be written. If ``None``, the
+            current working directory is used.
         ID : str, optional
-            A unique identifier for the stored results. If None, a random identifier is generated.
+            Identifier used in the output filenames. If ``None``, a random
+            ``unknown_tgt_<integer>`` identifier is generated and a warning is
+            emitted.
         """
 
         # If no path is specified use cwd.
@@ -362,35 +632,36 @@ class modeID(plotting, ):
  
 
     def selectModel(self, ):
-        """
-        Select the appropriate stellar model based on observed properties.
+        """Select the dipole-mode model from observed ``dnu`` and ``teff``.
 
-        The method classifies the star as either 'ms' (main sequence), 'sg' (subgiant), or 'rgb' (red giant branch) 
-        using thresholds based on the large frequency separation (`dnu`) and effective temperature (`Teff`).
+        The method classifies the star as ``'ms'`` (main sequence), ``'sg'``
+        (subgiant), or ``'rgb'`` (red giant branch) using linear thresholds in
+        the large frequency separation and effective temperature plane.
 
         Returns
         -------
         model : str
-            The selected model as a string: 'ms', 'sg', or 'rgb'.
+            Selected model name: ``'ms'``, ``'sg'`` or ``'rgb'``.
 
         Notes
         -----
         The classification uses linear relations:
-        - Main sequence (MS): `dnu > -0.016 * Teff + 157`
-        - Subgiant (SG): `dnu > -0.010 * Teff + 74`
-        - Red giant branch (RGB): Default if neither condition is satisfied.
+
+        - Main sequence: ``dnu > -0.016 * teff + 157``
+        - Subgiant: ``dnu > -0.010 * teff + 74``
+        - Red giant branch: used if neither condition is satisfied
 
         Examples
         --------
-        >>> obj.obs = {'dnu': 100, 'Teff': 5800}
+        >>> obj.obs = {'dnu': (100.0, 1.0), 'teff': (5800.0, 50.0)}
         >>> obj.selectModel()
         'sg'
 
-        >>> obj.obs = {'dnu': 120, 'Teff': 6000}
+        >>> obj.obs = {'dnu': (120.0, 1.0), 'teff': (6000.0, 50.0)}
         >>> obj.selectModel()
         'ms'
 
-        >>> obj.obs = {'dnu': 50, 'Teff': 5000}
+        >>> obj.obs = {'dnu': (50.0, 1.0), 'teff': (5000.0, 50.0)}
         >>> obj.selectModel()
         'rgb'
         """

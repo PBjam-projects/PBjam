@@ -1,4 +1,7 @@
-plotting
-^^^^^^^^
+Plotting utilities
+==================
+
 .. automodule:: pbjam.plotting
-    :members:
+   :members:
+   :undoc-members:
+   :show-inheritance:

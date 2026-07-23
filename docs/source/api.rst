@@ -1,15 +1,22 @@
-API
-===
+API reference
+=============
 
-PBjam can be roughly divided into two parts, the mode ID and the peakbagging stages. PBjam currently supports mode ID methods for identifying the l=2,0 mode pairs and l=1 modes in the :mod:`~pbjam.modeID` module, and methods for detailed peakbagging with the :mod:`~pbjam.peakbagging` module. 
+PBjam has three main public entry points:
 
-The :mod:`~pbjam.session` and :mod:`~pbjam.star` modules are wrappers for :mod:`~pbjam.modeID` and :mod:`~pbjam.peakbagging`, to help set up the analysis of one or more stars in a pipeline-like fashion. 
+* :class:`pbjam.core.session` coordinates analyses for one or more targets.
+* :class:`pbjam.core.star` coordinates the analysis of a single target.
+* :class:`pbjam.modeID.modeID` and the classes in
+  :mod:`pbjam.peakbagging` provide lower-level interfaces for custom pipelines.
 
-Modules in PBjam
-^^^^^^^^^^^^^^^^
+The remaining modules contain model implementations, probability distributions,
+input/output utilities, plotting helpers, and samplers used by those interfaces.
+
+Modules
+-------
+
 .. toctree::
    :maxdepth: 1
-   
+
    background
    core
    distributions
@@ -18,17 +25,9 @@ Modules in PBjam
    jar
    l1models
    l20models
+   MSmodels
    modeID
    peakbagging
    plotting
    samplers
-   
-   
-   
-
-
-
-
-
-
-
+   validation
