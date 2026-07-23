@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from scipy import stats
 
-from pbjam import distributions
+from pbjam import distributions, jar
 
 
 def evaluate_scalar(func, values):
@@ -44,7 +44,7 @@ def test_beta_pdf_is_normalized():
     x = np.linspace(2.0, 5.0, 2001)
     pdf = evaluate_scalar(dist.pdf, x)
 
-    assert np.trapezoid(pdf, x) == pytest.approx(1.0, rel=2e-4)
+    assert jar._trapezoid(pdf, x) == pytest.approx(1.0, rel=2e-4)
 
 
 def test_normal_matches_scipy_and_round_trips():
@@ -99,7 +99,7 @@ def test_truncated_sine_is_normalized_and_round_trips():
     pdf = evaluate_scalar(dist.pdf, x)
     q = jnp.array([0.0, 0.1, 0.5, 0.9, 1.0])
 
-    assert np.trapezoid(pdf, x) == pytest.approx(1.0, rel=2e-6)
+    assert jar._trapezoid(pdf, x) == pytest.approx(1.0, rel=2e-6)
     assert np.allclose(dist.cdf(dist.ppf(q)), q, atol=1e-10)
     assert dist.ppf(0.0) == pytest.approx(0.0)
     assert dist.ppf(1.0) == pytest.approx(np.pi / 2.0)

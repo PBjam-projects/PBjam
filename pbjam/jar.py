@@ -17,7 +17,7 @@ import pandas as pd
 import pbjam.distributions as dist
 
 _STD_PERCENTILES = (
-    np.array([0.5 - sc.erf(n / np.sqrt(2)) / 2 for n in range(-2, 3)])[::-1] * 100
+    np.array([0.5 - sc.erf(n / np.sqrt(2)) / 2 for n in range(-2, 3)])[::-1]  
 )
 class generalModelFuncs():
     """
@@ -658,21 +658,36 @@ def getCurvePercentiles(x, y, cdf=None, percentiles=None):
     if percentiles is None:
         percentiles = _STD_PERCENTILES
 
-    y = y / np.trapezoid(y, x)
+    x = np.asarray(x)
+    y = np.asarray(y)
+    percentiles = np.asarray(percentiles, dtype=float)
+
+    # Accept either probabilities [0, 1] or percentages [0, 100].
+    if np.any(percentiles > 1):
+        percentiles = percentiles / 100.0
+
+    if np.any((percentiles < 0) | (percentiles > 1)):
+        raise ValueError("percentiles must lie between 0 and 1")
 
     if cdf is None:
+        norm = _trapezoid(y, x)
+
+        if not np.isfinite(norm) or norm <= 0:
+            raise ValueError("y must have a positive finite integral")
+
+        y = y / norm
         dx = np.diff(x)
-    
         y_mid = (y[:-1] + y[1:]) / 2
-    
-        cdf = np.concatenate([[0], np.cumsum(y_mid * dx)])
-    
-        cdf /= cdf[-1]
-    
-    indices = np.searchsorted(cdf, percentiles)
-    
+
+        cdf = np.concatenate([[0.0], np.cumsum(y_mid * dx)])
+    else:
+        cdf = np.asarray(cdf, dtype=float)
+
+    cdf = cdf / cdf[-1]
+
+    indices = np.searchsorted(cdf, percentiles, side="left")
     indices = np.clip(indices, 0, len(x) - 1)
-    
+
     return np.sort(x[indices])
 
 class jaxInterp1D():
