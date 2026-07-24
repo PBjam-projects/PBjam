@@ -62,10 +62,10 @@ exclude_patterns = [
     "**/.ipynb_checkpoints",
 ]
 templates_path = ["_templates"]
-source_suffix = {
-    ".rst": "restructuredtext",
-    ".ipynb": "jupyter_notebook",
-}
+# source_suffix = {
+#     ".rst": "restructuredtext",
+#     ".ipynb": "jupyter_notebook",
+# }
 root_doc = "index"
 language = "en"
 

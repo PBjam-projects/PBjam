@@ -13,6 +13,13 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DOCS_ROOT = REPO_ROOT / "docs" / "source"
 
+def test_notebook_parser_is_registered_by_nbsphinx():
+    namespace = runpy.run_path(str(DOCS_ROOT / "conf.py"))
+
+    assert "nbsphinx" in namespace["extensions"]
+
+    source_suffix = namespace.get("source_suffix", {})
+    assert source_suffix.get(".ipynb") != "nbsphinx"
 
 def iter_toctree_targets(path):
     lines = path.read_text().splitlines()
